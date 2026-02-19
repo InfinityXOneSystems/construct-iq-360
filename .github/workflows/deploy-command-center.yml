@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - 'copilot/**'
     paths:
       - 'apps/command-center/**'
       - 'data/raw-leads/**'

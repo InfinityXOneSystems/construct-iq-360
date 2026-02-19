@@ -20,6 +20,7 @@ export default function Terminal() {
       ];
       
       const newLine: TerminalLine = {
+        id: Date.now(),
         timestamp: new Date().toISOString(),
         level: 'info',
         message: messages[Math.floor(Math.random() * messages.length)],

@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  infinity-core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: infinity-core
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - POLL_INTERVAL=${POLL_INTERVAL:-30}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    volumes:
+      - infinity-core-data:/app/data
+    networks:
+      - infinity-mesh
+
+volumes:
+  infinity-core-data:
+
+networks:
+  infinity-mesh:
+    name: infinity-mesh
+    driver: bridge
+    external: false

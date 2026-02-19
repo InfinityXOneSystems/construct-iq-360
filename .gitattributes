@@ -1,0 +1,14 @@
+# Enforce LF line endings for all Python source files to prevent
+# Windows CRLF / UTF-16 BOM corruption (e.g. infinity-core main.py)
+*.py    text eol=lf
+*.sh    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.jsx   text eol=lf
+Dockerfile text eol=lf

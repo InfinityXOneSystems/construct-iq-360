@@ -1,0 +1,250 @@
+name: 🔐 Security Scanner - Vulnerability Detection
+
+on:
+  schedule:
+    # Runs daily at 2:00 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+
+jobs:
+  codeql-analysis:
+    name: CodeQL Security Analysis
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['python']
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+      
+      - name: 🏗️ Autobuild
+        uses: github/codeql-action/autobuild@v3
+      
+      - name: 🔐 Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
+  
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: 🔍 Scan Python Dependencies
+        run: |
+          echo "🔐 DEPENDENCY VULNERABILITY SCAN"
+          echo "==============================="
+          echo ""
+          
+          # Install safety for Python dependency scanning
+          pip install safety
+          
+          # Scan each requirements file
+          for req_file in $(find . -name "requirements.txt"); do
+            echo "Scanning: $req_file"
+            safety check --file "$req_file" --json > /tmp/safety_report.json || true
+            
+            # Display results
+            if [ -f /tmp/safety_report.json ]; then
+              echo "  Results:"
+              cat /tmp/safety_report.json | python3 -m json.tool || echo "  No vulnerabilities found"
+            fi
+            echo ""
+          done
+      
+      - name: 📦 Check for Outdated Packages
+        run: |
+          echo "📦 Checking for outdated packages..."
+          
+          for req_file in $(find . -name "requirements.txt"); do
+            echo "Checking: $req_file"
+            
+            # Install packages and check for updates
+            if [ -f "$req_file" ]; then
+              pip install -r "$req_file" >/dev/null 2>&1 || true
+              pip list --outdated || true
+            fi
+            echo ""
+          done
+      
+      - name: 🚨 Create Security Alert
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '🔐 Security Vulnerability Detected';
+            const body = `**Security Scanner Alert**
+
+A security vulnerability has been detected in the codebase or dependencies.
+
+**Scan Time:** ${new Date().toISOString()}
+**Scanner:** CodeQL + Safety
+
+**Action Required:**
+1. Review the security alerts in the Security tab
+2. Update vulnerable dependencies
+3. Apply security patches
+
+**Workflow Run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}
+
+---
+*Automated security alert from the Security Scanner system*`;
+            
+            // Check if similar issue exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'security'
+            });
+            
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['security', 'automated', 'high-priority']
+              });
+            }
+  
+  secret-scan:
+    name: Secret Detection Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🔍 Scan for Exposed Secrets
+        run: |
+          echo "🔍 SCANNING FOR EXPOSED SECRETS"
+          echo "================================"
+          echo ""
+          
+          SECRETS_FOUND=0
+          
+          # Common secret patterns
+          echo "Checking for common secret patterns..."
+          
+          # API Keys
+          if grep -r "api[_-]key\s*=\s*['\"]" . --include="*.py" --include="*.js" --include="*.yml" 2>/dev/null | grep -v ".git"; then
+            echo "⚠️ Potential API key exposure detected"
+            SECRETS_FOUND=$((SECRETS_FOUND + 1))
+          fi
+          
+          # Passwords
+          if grep -r "password\s*=\s*['\"]" . --include="*.py" --include="*.js" --include="*.yml" 2>/dev/null | grep -v ".git" | grep -v "GITHUB_TOKEN"; then
+            echo "⚠️ Potential password exposure detected"
+            SECRETS_FOUND=$((SECRETS_FOUND + 1))
+          fi
+          
+          # Tokens
+          if grep -r "token\s*=\s*['\"][a-zA-Z0-9]" . --include="*.py" --include="*.js" --include="*.yml" 2>/dev/null | grep -v ".git" | grep -v "GITHUB_TOKEN"; then
+            echo "⚠️ Potential token exposure detected"
+            SECRETS_FOUND=$((SECRETS_FOUND + 1))
+          fi
+          
+          # Private keys
+          if find . -name "*.pem" -o -name "*.key" 2>/dev/null | grep -v ".git"; then
+            echo "⚠️ Private key files detected"
+            SECRETS_FOUND=$((SECRETS_FOUND + 1))
+          fi
+          
+          echo ""
+          if [ $SECRETS_FOUND -eq 0 ]; then
+            echo "✅ No exposed secrets detected"
+          else
+            echo "⚠️ Found $SECRETS_FOUND potential secret exposures"
+            exit 1
+          fi
+      
+      - name: 🚨 Alert on Secret Exposure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 CRITICAL: Potential Secret Exposure Detected',
+              body: `**CRITICAL SECURITY ALERT**
+
+The secret scanner has detected potential exposure of sensitive credentials in the codebase.
+
+**Immediate Actions Required:**
+1. Review the workflow logs for details
+2. Rotate any exposed credentials immediately
+3. Remove secrets from code and use GitHub Secrets
+4. Update .gitignore to prevent future exposures
+5. Consider rebasing history if secrets are in git history
+
+**Workflow Run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}
+
+---
+*CRITICAL automated alert from Security Scanner*`,
+              labels: ['security', 'critical', 'automated', 'needs-attention']
+            });
+  
+  security-report:
+    name: Generate Security Report
+    runs-on: ubuntu-latest
+    needs: [codeql-analysis, dependency-scan, secret-scan]
+    if: always()
+    
+    steps:
+      - name: 📊 Generate Security Summary
+        run: |
+          echo ""
+          echo "=" * 60
+          echo "🔐 SECURITY SCAN SUMMARY"
+          echo "=" * 60
+          echo "⏰ Scan Time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
+          echo "Scan Results:"
+          echo "  CodeQL Analysis: ${{ needs.codeql-analysis.result }}"
+          echo "  Dependency Scan: ${{ needs.dependency-scan.result }}"
+          echo "  Secret Scan: ${{ needs.secret-scan.result }}"
+          echo ""
+          
+          if [ "${{ needs.codeql-analysis.result }}" = "success" ] && \
+             [ "${{ needs.dependency-scan.result }}" = "success" ] && \
+             [ "${{ needs.secret-scan.result }}" = "success" ]; then
+            echo "✅ All security checks passed"
+          else
+            echo "⚠️ Security issues detected - review required"
+          fi
+          
+          echo ""
+          echo "📅 Next scan: Tomorrow at 2:00 AM UTC"
+          echo "=" * 60

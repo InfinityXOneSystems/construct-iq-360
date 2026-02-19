@@ -1,0 +1,277 @@
+name: 🤖 Auto-Merge - Autonomous PR Integration
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted]
+  check_suite:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to auto-merge'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+jobs:
+  auto-merge:
+    name: Evaluate and Merge PR
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request && 
+       (contains(github.event.pull_request.user.login, 'bot') || 
+        contains(github.event.pull_request.user.login, 'dependabot') ||
+        contains(github.event.pull_request.title, '[AUTO]') ||
+        contains(github.event.pull_request.labels.*.name, 'auto-merge')))
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Get PR Details
+        id: pr_info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let pr_number;
+            if (context.eventName === 'workflow_dispatch') {
+              pr_number = context.payload.inputs.pr_number;
+            } else {
+              pr_number = context.payload.pull_request.number;
+            }
+            
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr_number
+            });
+            
+            console.log(`PR #${pr_number}: ${pr.data.title}`);
+            console.log(`Author: ${pr.data.user.login}`);
+            console.log(`State: ${pr.data.state}`);
+            console.log(`Mergeable: ${pr.data.mergeable}`);
+            
+            core.setOutput('pr_number', pr_number);
+            core.setOutput('pr_title', pr.data.title);
+            core.setOutput('pr_author', pr.data.user.login);
+            core.setOutput('mergeable', pr.data.mergeable);
+            core.setOutput('state', pr.data.state);
+            
+            return pr.data;
+      
+      - name: ✅ Check PR Status
+        id: check_status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr_number = ${{ steps.pr_info.outputs.pr_number }};
+            
+            // Get all checks for this PR
+            const checks = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.pull_request?.head?.sha || context.sha
+            });
+            
+            console.log(`Total checks: ${checks.data.check_runs.length}`);
+            
+            let all_passed = true;
+            let pending = false;
+            
+            for (const check of checks.data.check_runs) {
+              console.log(`  ${check.name}: ${check.status} - ${check.conclusion}`);
+              
+              if (check.status !== 'completed') {
+                pending = true;
+              } else if (check.conclusion !== 'success' && check.conclusion !== 'neutral') {
+                all_passed = false;
+              }
+            }
+            
+            core.setOutput('checks_passed', all_passed && !pending);
+            core.setOutput('checks_pending', pending);
+            
+            return { all_passed: all_passed && !pending, pending };
+      
+      - name: 🔐 Security Check
+        id: security_check
+        run: |
+          echo "🔐 Performing security validation..."
+          
+          SECURITY_PASSED=true
+          
+          # Check for suspicious file changes
+          if git diff --name-only origin/main | grep -E "(\.env|credentials|secrets)" ; then
+            echo "⚠️ Suspicious file changes detected"
+            SECURITY_PASSED=false
+          fi
+          
+          # Check for large files
+          LARGE_FILES=$(git diff --stat origin/main | grep -E "\s+[0-9]{4,}\s+" | wc -l)
+          if [ $LARGE_FILES -gt 0 ]; then
+            echo "⚠️ Large file changes detected: $LARGE_FILES files"
+          fi
+          
+          echo "security_passed=$SECURITY_PASSED" >> $GITHUB_OUTPUT
+          
+          if [ "$SECURITY_PASSED" = "true" ]; then
+            echo "✅ Security checks passed"
+          else
+            echo "❌ Security checks failed"
+          fi
+      
+      - name: 📊 Analyze Changes
+        id: analyze_changes
+        run: |
+          echo "📊 Analyzing PR changes..."
+          
+          # Get change statistics
+          CHANGED_FILES=$(git diff --name-only origin/main | wc -l)
+          ADDITIONS=$(git diff --stat origin/main | tail -1 | grep -o '[0-9]* insertion' | grep -o '[0-9]*' || echo 0)
+          DELETIONS=$(git diff --stat origin/main | tail -1 | grep -o '[0-9]* deletion' | grep -o '[0-9]*' || echo 0)
+          
+          echo "  Files changed: $CHANGED_FILES"
+          echo "  Additions: $ADDITIONS"
+          echo "  Deletions: $DELETIONS"
+          
+          # Determine if changes are significant
+          SIGNIFICANT=false
+          if [ $CHANGED_FILES -gt 20 ] || [ $ADDITIONS -gt 500 ]; then
+            SIGNIFICANT=true
+          fi
+          
+          echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+          echo "significant=$SIGNIFICANT" >> $GITHUB_OUTPUT
+      
+      - name: 🎯 Evaluate Merge Eligibility
+        id: evaluate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const checksPassedStr = '${{ steps.check_status.outputs.checks_passed }}';
+            const checksPendingStr = '${{ steps.check_status.outputs.checks_pending }}';
+            const securityPassedStr = '${{ steps.security_check.outputs.security_passed }}';
+            const mergeableStr = '${{ steps.pr_info.outputs.mergeable }}';
+            
+            const checksPassedOutput = checksPassedStr === 'true';
+            const checksPendingOutput = checksPendingStr === 'true';
+            const securityPassedOutput = securityPassedStr === 'true';
+            const mergeableOutput = mergeableStr === 'true';
+            
+            console.log('Merge Eligibility Evaluation:');
+            console.log(`  Checks Passed: ${checksPassedOutput}`);
+            console.log(`  Checks Pending: ${checksPendingOutput}`);
+            console.log(`  Security Passed: ${securityPassedOutput}`);
+            console.log(`  Mergeable: ${mergeableOutput}`);
+            
+            const canMerge = checksPassedOutput && securityPassedOutput && mergeableOutput && !checksPendingOutput;
+            
+            core.setOutput('can_merge', canMerge);
+            
+            if (canMerge) {
+              console.log('✅ PR is eligible for auto-merge');
+            } else {
+              console.log('❌ PR is not eligible for auto-merge');
+              if (checksPendingOutput) console.log('  Reason: Checks still pending');
+              if (!checksPassedOutput) console.log('  Reason: Not all checks passed');
+              if (!securityPassedOutput) console.log('  Reason: Security check failed');
+              if (!mergeableOutput) console.log('  Reason: PR is not mergeable');
+            }
+            
+            return canMerge;
+      
+      - name: 🚀 Execute Auto-Merge
+        if: steps.evaluate.outputs.can_merge == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr_number = ${{ steps.pr_info.outputs.pr_number }};
+            
+            try {
+              console.log(`🚀 Auto-merging PR #${pr_number}...`);
+              
+              const result = await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr_number,
+                merge_method: 'squash',
+                commit_title: `[AUTO-MERGE] ${{ steps.pr_info.outputs.pr_title }}`,
+                commit_message: 'Automatically merged by Genesis Auto-Merge system.\n\nAll checks passed and security validation completed.'
+              });
+              
+              if (result.data.merged) {
+                console.log('✅ PR successfully merged');
+                
+                // Add success comment
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr_number,
+                  body: '🤖 **Auto-Merge Successful**\n\n' +
+                        'This PR has been automatically merged by the Genesis system.\n\n' +
+                        '✅ All checks passed\n' +
+                        '✅ Security validation completed\n' +
+                        '✅ Changes integrated using squash merge\n\n' +
+                        '*Autonomous operation completed at ' + new Date().toISOString() + '*'
+                });
+              } else {
+                console.log('⚠️ Merge attempted but not completed');
+              }
+            } catch (error) {
+              console.error('❌ Auto-merge failed:', error.message);
+              
+              // Add failure comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr_number,
+                body: '⚠️ **Auto-Merge Failed**\n\n' +
+                      'The automatic merge could not be completed.\n\n' +
+                      'Error: ' + error.message + '\n\n' +
+                      'Manual intervention may be required.'
+              });
+              
+              throw error;
+            }
+      
+      - name: 📝 Report Status
+        if: always()
+        run: |
+          echo ""
+          echo "=" * 60
+          echo "🤖 AUTO-MERGE EXECUTION REPORT"
+          echo "=" * 60
+          echo "PR Number: ${{ steps.pr_info.outputs.pr_number }}"
+          echo "PR Title: ${{ steps.pr_info.outputs.pr_title }}"
+          echo "Author: ${{ steps.pr_info.outputs.pr_author }}"
+          echo "Eligible: ${{ steps.evaluate.outputs.can_merge }}"
+          echo "Changed Files: ${{ steps.analyze_changes.outputs.changed_files }}"
+          echo ""
+          if [ "${{ steps.evaluate.outputs.can_merge }}" = "true" ]; then
+            echo "✅ Auto-merge executed"
+          else
+            echo "⏸️  Auto-merge deferred"
+          fi
+          echo "=" * 60
+      
+      - name: 🚨 Notify on Failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Auto-Merge System Failure',
+              body: '**Auto-Merge Alert**: The auto-merge system encountered an error.\n\n' +
+                    '**PR:** #${{ steps.pr_info.outputs.pr_number }}\n' +
+                    '**Workflow Run:** ' + context.serverUrl + '/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + '\n\n' +
+                    'The system may require manual intervention.',
+              labels: ['bug', 'automated', 'auto-merge', 'needs-attention']
+            });

@@ -1,0 +1,308 @@
+name: 📡 Repository Scanner - 24/7 Autonomous Monitoring
+
+on:
+  schedule:
+    # Runs every 30 minutes for continuous monitoring
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Scan type (quick/full/security)'
+        required: false
+        default: 'quick'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  security-events: read
+
+jobs:
+  continuous-scan:
+    name: Autonomous Repository Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: 🔍 Scan Repository Structure
+        id: structure_scan
+        run: |
+          echo "📡 REPOSITORY SCANNER: 24/7 MONITORING"
+          echo "======================================"
+          echo "⏰ Scan Time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
+          
+          # Scan for file changes since last commit
+          echo "📊 Recent Activity:"
+          COMMITS_LAST_HOUR=$(git log --since='1 hour ago' --oneline | wc -l)
+          COMMITS_LAST_DAY=$(git log --since='24 hours ago' --oneline | wc -l)
+          echo "  Commits (last hour): $COMMITS_LAST_HOUR"
+          echo "  Commits (last 24h): $COMMITS_LAST_DAY"
+          
+          # File statistics
+          echo ""
+          echo "📁 Repository Stats:"
+          TOTAL_FILES=$(find . -type f | wc -l)
+          PYTHON_FILES=$(find . -name '*.py' | wc -l)
+          YAML_FILES=$(find . -name '*.yml' -o -name '*.yaml' | wc -l)
+          MD_FILES=$(find . -name '*.md' | wc -l)
+          
+          echo "  Total files: $TOTAL_FILES"
+          echo "  Python files: $PYTHON_FILES"
+          echo "  YAML files: $YAML_FILES"
+          echo "  Markdown files: $MD_FILES"
+          
+          # Save metrics
+          echo "commits_last_hour=$COMMITS_LAST_HOUR" >> $GITHUB_OUTPUT
+          echo "commits_last_day=$COMMITS_LAST_DAY" >> $GITHUB_OUTPUT
+          echo "total_files=$TOTAL_FILES" >> $GITHUB_OUTPUT
+      
+      - name: 🔐 Security Monitoring
+        id: security_scan
+        run: |
+          echo ""
+          echo "🔐 Security Scan:"
+          
+          # Check for sensitive file patterns
+          echo "  Checking for sensitive files..."
+          SENSITIVE_FILES=$(find . -name "*.pem" -o -name "*.key" -o -name "*secret*" -o -name "*.env" 2>/dev/null | grep -v ".git" | wc -l)
+          echo "    Sensitive file patterns found: $SENSITIVE_FILES"
+          
+          # Check for TODO security items
+          SECURITY_TODOS=$(grep -r "TODO.*security\|TODO.*vulnerability\|TODO.*fix" . --include="*.py" --include="*.js" 2>/dev/null | wc -l)
+          echo "    Security TODOs: $SECURITY_TODOS"
+          
+          # Check for exposed endpoints
+          ENDPOINTS=$(grep -r "http://\|https://" . --include="*.py" --include="*.yml" 2>/dev/null | grep -v ".git" | wc -l)
+          echo "    HTTP endpoints referenced: $ENDPOINTS"
+          
+          # Alert level
+          ALERT_LEVEL="normal"
+          if [ $SENSITIVE_FILES -gt 0 ]; then
+            ALERT_LEVEL="warning"
+          fi
+          
+          echo "alert_level=$ALERT_LEVEL" >> $GITHUB_OUTPUT
+          echo "sensitive_files=$SENSITIVE_FILES" >> $GITHUB_OUTPUT
+      
+      - name: 📊 Code Quality Metrics
+        id: quality_scan
+        run: |
+          echo ""
+          echo "📊 Code Quality Metrics:"
+          
+          # Python code complexity (basic check)
+          if [ -d "apps" ]; then
+            echo "  Analyzing Python code..."
+            
+            # Count functions and classes
+            FUNCTIONS=$(grep -r "def " apps/ --include="*.py" 2>/dev/null | wc -l)
+            CLASSES=$(grep -r "class " apps/ --include="*.py" 2>/dev/null | wc -l)
+            echo "    Functions: $FUNCTIONS"
+            echo "    Classes: $CLASSES"
+            
+            # Check for docstrings
+            DOCSTRINGS=$(grep -r '"""' apps/ --include="*.py" 2>/dev/null | wc -l)
+            echo "    Docstrings: $DOCSTRINGS"
+            
+            # Calculate documentation ratio
+            if [ $FUNCTIONS -gt 0 ]; then
+              DOC_RATIO=$((DOCSTRINGS * 100 / FUNCTIONS))
+              echo "    Documentation ratio: ${DOC_RATIO}%"
+              echo "doc_ratio=$DOC_RATIO" >> $GITHUB_OUTPUT
+            fi
+          fi
+      
+      - name: 🎯 Dependency Check
+        id: dependency_scan
+        run: |
+          echo ""
+          echo "🎯 Dependency Analysis:"
+          
+          # Check for requirements files
+          if [ -f "apps/hunter-agent/requirements.txt" ]; then
+            DEPS_COUNT=$(wc -l < apps/hunter-agent/requirements.txt)
+            echo "  Hunter Agent dependencies: $DEPS_COUNT"
+          fi
+          
+          # Check for package.json files
+          PKG_JSON_FILES=$(find . -name "package.json" | wc -l)
+          echo "  Node.js packages found: $PKG_JSON_FILES"
+          
+          # Check for outdated patterns (simple heuristic)
+          echo "  Checking for outdated patterns..."
+          OUTDATED_PATTERNS=$(grep -r "python2\|python 2\|deprecated" . --include="*.py" --include="*.md" 2>/dev/null | wc -l)
+          if [ $OUTDATED_PATTERNS -gt 0 ]; then
+            echo "    ⚠️ Potentially outdated code patterns: $OUTDATED_PATTERNS"
+          fi
+      
+      - name: 🚀 Workflow Health Check
+        id: workflow_scan
+        run: |
+          echo ""
+          echo "🚀 Workflow Health:"
+          
+          # Count active workflows
+          WORKFLOWS=$(find .github/workflows -name "*.yml" | wc -l)
+          echo "  Total workflows: $WORKFLOWS"
+          
+          # Check for workflow best practices
+          echo "  Checking workflow configuration..."
+          
+          for workflow in .github/workflows/*.yml; do
+            NAME=$(basename "$workflow")
+            
+            # Check for required fields
+            if grep -q "name:" "$workflow"; then
+              echo "    ✅ $NAME has name"
+            else
+              echo "    ⚠️ $NAME missing name field"
+            fi
+            
+            # Check for permissions
+            if grep -q "permissions:" "$workflow"; then
+              echo "    ✅ $NAME has explicit permissions"
+            else
+              echo "    ⚠️ $NAME using default permissions"
+            fi
+          done
+          
+          echo "workflow_count=$WORKFLOWS" >> $GITHUB_OUTPUT
+      
+      - name: 📈 Performance Insights
+        id: performance_scan
+        run: |
+          echo ""
+          echo "📈 Performance Insights:"
+          
+          # Check for large files
+          echo "  Scanning for large files..."
+          LARGE_FILES=$(find . -type f -size +1M 2>/dev/null | grep -v ".git" | wc -l)
+          echo "    Files over 1MB: $LARGE_FILES"
+          
+          # Check for binary files
+          BINARY_FILES=$(find . -type f -exec file {} \; 2>/dev/null | grep -i "executable\|binary" | wc -l)
+          echo "    Binary files: $BINARY_FILES"
+          
+          # Repository size
+          REPO_SIZE=$(du -sh . 2>/dev/null | cut -f1)
+          echo "    Repository size: $REPO_SIZE"
+          
+          echo "large_files=$LARGE_FILES" >> $GITHUB_OUTPUT
+      
+      - name: 🧠 AI Opportunity Detection
+        id: ai_opportunities
+        run: |
+          echo ""
+          echo "🧠 AI Integration Opportunities:"
+          
+          # Scan for AI integration points
+          AI_TODOS=$(grep -r "TODO.*AI\|TODO.*ML\|TODO.*GPT" . --include="*.py" 2>/dev/null | wc -l)
+          echo "  AI implementation TODOs: $AI_TODOS"
+          
+          # Check for OpenAI usage
+          OPENAI_REFS=$(grep -r "openai\|gpt-4\|gpt-3" . --include="*.py" 2>/dev/null | wc -l)
+          echo "  OpenAI references: $OPENAI_REFS"
+          
+          # Check for ML libraries
+          ML_IMPORTS=$(grep -r "import sklearn\|import torch\|import tensorflow" . --include="*.py" 2>/dev/null | wc -l)
+          echo "  ML library usage: $ML_IMPORTS"
+          
+          echo "ai_opportunities=$AI_TODOS" >> $GITHUB_OUTPUT
+      
+      - name: 📊 Generate Scan Report
+        run: |
+          echo ""
+          echo "=" * 60
+          echo "📡 SCAN SUMMARY"
+          echo "=" * 60
+          echo "⏰ Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
+          echo "📊 Activity:"
+          echo "  Commits (24h): ${{ steps.structure_scan.outputs.commits_last_day }}"
+          echo "  Total files: ${{ steps.structure_scan.outputs.total_files }}"
+          echo ""
+          echo "🔐 Security:"
+          echo "  Alert level: ${{ steps.security_scan.outputs.alert_level }}"
+          echo "  Sensitive files: ${{ steps.security_scan.outputs.sensitive_files }}"
+          echo ""
+          echo "📈 Quality:"
+          echo "  Documentation ratio: ${{ steps.quality_scan.outputs.doc_ratio }}%"
+          echo "  Workflows: ${{ steps.workflow_scan.outputs.workflow_count }}"
+          echo ""
+          echo "🧠 AI Opportunities:"
+          echo "  Implementation opportunities: ${{ steps.ai_opportunities.outputs.ai_opportunities }}"
+          echo ""
+          echo "✅ Continuous scan completed"
+          echo "Next scan: In 30 minutes"
+          echo "=" * 60
+      
+      - name: 🚨 Alert on Critical Issues
+        if: |
+          steps.security_scan.outputs.alert_level == 'warning' ||
+          steps.security_scan.outputs.sensitive_files > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Check if alert issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'scanner-alert'
+            });
+            
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🚨 Repository Scanner Alert - Security Review Needed',
+                body: `**Scanner Alert**
+
+The 24/7 repository scanner has detected items requiring attention:
+
+**Security Findings:**
+- Alert Level: ${{ steps.security_scan.outputs.alert_level }}
+- Sensitive Files: ${{ steps.security_scan.outputs.sensitive_files }}
+
+**Scan Timestamp:** ${new Date().toISOString()}
+
+**Recommended Actions:**
+1. Review sensitive file patterns
+2. Ensure secrets are properly stored in GitHub Secrets
+3. Verify .gitignore is configured correctly
+
+---
+*Automated alert from Repository Scanner*`,
+                labels: ['scanner-alert', 'security', 'automated', 'needs-review']
+              });
+            }
+      
+      - name: 💾 Log Scan Results
+        run: |
+          # Create logs directory if it doesn't exist
+          mkdir -p .logs
+          
+          # Generate scan log
+          cat > .logs/scanner_$(date -u '+%Y%m%d_%H%M%S').json << EOF
+          {
+            "timestamp": "$(date -u '+%Y-%m-%d %H:%M:%S UTC')",
+            "commits_24h": ${{ steps.structure_scan.outputs.commits_last_day }},
+            "total_files": ${{ steps.structure_scan.outputs.total_files }},
+            "alert_level": "${{ steps.security_scan.outputs.alert_level }}",
+            "doc_ratio": ${{ steps.quality_scan.outputs.doc_ratio || 0 }},
+            "workflow_count": ${{ steps.workflow_scan.outputs.workflow_count }},
+            "ai_opportunities": ${{ steps.ai_opportunities.outputs.ai_opportunities }}
+          }
+          EOF
+          
+          echo "📝 Scan results logged"

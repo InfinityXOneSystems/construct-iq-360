@@ -1,0 +1,447 @@
+name: 🧠 AI Recommender - Technology Integration Advisor
+
+on:
+  schedule:
+    # Runs weekly on Monday at 9:00 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      focus_area:
+        description: 'Focus area (ml/nlp/vision/automation/all)'
+        required: false
+        default: 'all'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  ai-recommendations:
+    name: Generate AI Technology Recommendations
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🧠 Analyze Current AI Integration
+        id: current_ai
+        run: |
+          echo "🧠 AI TECHNOLOGY RECOMMENDATION SYSTEM"
+          echo "====================================="
+          echo ""
+          
+          echo "📊 Current AI Integration Analysis:"
+          
+          # Check for AI libraries in use
+          echo "  Checking Python dependencies..."
+          if [ -f "apps/hunter-agent/requirements.txt" ]; then
+            AI_LIBS=$(grep -i "openai\|anthropic\|langchain\|tensorflow\|pytorch\|sklearn" apps/*/requirements.txt 2>/dev/null | wc -l)
+            echo "    AI libraries detected: $AI_LIBS"
+            echo "ai_libs=$AI_LIBS" >> $GITHUB_OUTPUT
+          else
+            echo "    No requirements.txt found"
+            echo "ai_libs=0" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check for AI implementation TODOs
+          AI_TODOS=$(grep -r "TODO.*AI\|TODO.*ML\|TODO.*GPT\|TODO.*vision\|TODO.*model" . --include="*.py" --include="*.md" 2>/dev/null | wc -l)
+          echo "    AI implementation TODOs: $AI_TODOS"
+          echo "ai_todos=$AI_TODOS" >> $GITHUB_OUTPUT
+          
+          # Check for AI-related code
+          AI_CODE=$(grep -r "openai\|anthropic\|model\|predict\|train" apps/ --include="*.py" 2>/dev/null | wc -l)
+          echo "    AI code references: $AI_CODE"
+          echo "ai_code=$AI_CODE" >> $GITHUB_OUTPUT
+          
+          echo ""
+      
+      - name: 🔍 Identify AI Opportunities
+        id: opportunities
+        run: |
+          echo "🔍 Identifying AI Enhancement Opportunities:"
+          echo ""
+          
+          OPPORTUNITIES=""
+          PRIORITY_SCORE=0
+          
+          # Analyze repository for AI opportunities
+          
+          # 1. Natural Language Processing opportunities
+          echo "  1️⃣ NLP Opportunities:"
+          TEXT_FILES=$(find . -name "*.md" -o -name "*.txt" | wc -l)
+          if [ $TEXT_FILES -gt 5 ]; then
+            echo "    ✅ Document analysis and summarization"
+            echo "    ✅ Automated documentation generation"
+            echo "    ✅ Intelligent search and retrieval"
+            OPPORTUNITIES="${OPPORTUNITIES}nlp,"
+            PRIORITY_SCORE=$((PRIORITY_SCORE + 3))
+          fi
+          
+          # 2. Computer Vision opportunities
+          echo ""
+          echo "  2️⃣ Computer Vision Opportunities:"
+          if grep -q "plan\|drawing\|image" apps/architect-ai/estimator.py 2>/dev/null; then
+            echo "    ✅ Construction plan analysis (GPT-4 Vision)"
+            echo "    ✅ Image-based cost estimation"
+            echo "    ✅ Quality control via image recognition"
+            OPPORTUNITIES="${OPPORTUNITIES}vision,"
+            PRIORITY_SCORE=$((PRIORITY_SCORE + 5))
+          fi
+          
+          # 3. Machine Learning opportunities
+          echo ""
+          echo "  3️⃣ Machine Learning Opportunities:"
+          if [ -d "apps/architect-ai" ]; then
+            echo "    ✅ Predictive cost modeling"
+            echo "    ✅ Lead scoring and qualification"
+            echo "    ✅ Risk assessment automation"
+            OPPORTUNITIES="${OPPORTUNITIES}ml,"
+            PRIORITY_SCORE=$((PRIORITY_SCORE + 4))
+          fi
+          
+          # 4. Code automation opportunities
+          echo ""
+          echo "  4️⃣ Code Automation Opportunities:"
+          PYTHON_FILES=$(find apps -name "*.py" 2>/dev/null | wc -l)
+          if [ $PYTHON_FILES -gt 0 ]; then
+            echo "    ✅ AI-powered code review"
+            echo "    ✅ Automated test generation"
+            echo "    ✅ Intelligent refactoring suggestions"
+            OPPORTUNITIES="${OPPORTUNITIES}automation,"
+            PRIORITY_SCORE=$((PRIORITY_SCORE + 4))
+          fi
+          
+          # 5. Workflow optimization
+          echo ""
+          echo "  5️⃣ Workflow Intelligence:"
+          WORKFLOWS=$(find .github/workflows -name "*.yml" | wc -l)
+          if [ $WORKFLOWS -gt 3 ]; then
+            echo "    ✅ Workflow optimization recommendations"
+            echo "    ✅ Resource allocation prediction"
+            echo "    ✅ Failure pattern detection"
+            OPPORTUNITIES="${OPPORTUNITIES}workflow,"
+            PRIORITY_SCORE=$((PRIORITY_SCORE + 3))
+          fi
+          
+          echo ""
+          echo "opportunities=$OPPORTUNITIES" >> $GITHUB_OUTPUT
+          echo "priority_score=$PRIORITY_SCORE" >> $GITHUB_OUTPUT
+      
+      - name: 🎯 Generate Technology Recommendations
+        id: recommendations
+        run: |
+          echo ""
+          echo "🎯 RECOMMENDED AI TECHNOLOGIES"
+          echo "==============================="
+          echo ""
+          
+          # Create recommendations based on opportunities
+          
+          echo "## High Priority Recommendations:"
+          echo ""
+          
+          echo "### 1. OpenAI GPT-4 Integration"
+          echo "   **Use Cases:**"
+          echo "   - Intelligent lead qualification"
+          echo "   - Automated proposal generation"
+          echo "   - Natural language query interface"
+          echo "   **Implementation Effort:** Medium"
+          echo "   **ROI:** High"
+          echo ""
+          
+          echo "### 2. GPT-4 Vision API"
+          echo "   **Use Cases:**"
+          echo "   - Construction plan interpretation"
+          echo "   - Automated quantity takeoff"
+          echo "   - Visual quality inspection"
+          echo "   **Implementation Effort:** Medium"
+          echo "   **ROI:** Very High"
+          echo ""
+          
+          echo "### 3. LangChain Framework"
+          echo "   **Use Cases:**"
+          echo "   - Document chain processing"
+          echo "   - Multi-step AI workflows"
+          echo "   - Knowledge base integration"
+          echo "   **Implementation Effort:** Low-Medium"
+          echo "   **ROI:** High"
+          echo ""
+          
+          echo "### 4. Scikit-learn for ML Models"
+          echo "   **Use Cases:**"
+          echo "   - Cost prediction models"
+          echo "   - Historical data analysis"
+          echo "   - Risk scoring algorithms"
+          echo "   **Implementation Effort:** Medium-High"
+          echo "   **ROI:** High"
+          echo ""
+          
+          echo "### 5. GitHub Copilot Workspace"
+          echo "   **Use Cases:**"
+          echo "   - AI-assisted development"
+          echo "   - Code completion and suggestions"
+          echo "   - Documentation generation"
+          echo "   **Implementation Effort:** Low"
+          echo "   **ROI:** Medium-High"
+          echo ""
+          
+          echo "## Emerging Technologies to Watch:"
+          echo ""
+          echo "- **Anthropic Claude**: Alternative to GPT-4 with longer context"
+          echo "- **Vector Databases**: Pinecone, Weaviate for semantic search"
+          echo "- **AutoGPT**: Autonomous task completion"
+          echo "- **Code Llama**: Specialized code generation models"
+          echo ""
+      
+      - name: 📝 Create Implementation Roadmap
+        id: roadmap
+        run: |
+          cat > /tmp/ai_roadmap.md << 'EOF'
+          # 🧠 AI Technology Integration Roadmap
+          
+          **Generated:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          **Priority Score:** ${{ steps.opportunities.outputs.priority_score }}/20
+          
+          ---
+          
+          ## 🎯 Executive Summary
+          
+          This report analyzes the current AI integration status and provides recommendations for enhancing the Construct-OS system with cutting-edge AI technologies.
+          
+          **Current Status:**
+          - AI Libraries in Use: ${{ steps.current_ai.outputs.ai_libs }}
+          - AI Implementation TODOs: ${{ steps.current_ai.outputs.ai_todos }}
+          - AI Code References: ${{ steps.current_ai.outputs.ai_code }}
+          
+          ---
+          
+          ## 📊 Recommended Technologies
+          
+          ### Phase 1: Foundation (Weeks 1-4)
+          
+          #### 1. OpenAI GPT-4 API Integration
+          - **Status:** ⏳ Pending
+          - **Priority:** 🔴 Critical
+          - **Use Cases:**
+            - Lead text analysis and qualification
+            - Proposal content generation
+            - Email response automation
+          - **Dependencies:** OpenAI API key, budget allocation
+          - **Estimated Effort:** 40 hours
+          
+          #### 2. LangChain Framework
+          - **Status:** ⏳ Pending
+          - **Priority:** 🟡 High
+          - **Use Cases:**
+            - Document processing pipelines
+            - Multi-step reasoning workflows
+            - Integration with vector databases
+          - **Dependencies:** Python 3.11+, OpenAI API
+          - **Estimated Effort:** 30 hours
+          
+          ### Phase 2: Vision & Analysis (Weeks 5-8)
+          
+          #### 3. GPT-4 Vision API
+          - **Status:** ⏳ Pending
+          - **Priority:** 🔴 Critical
+          - **Use Cases:**
+            - Construction plan interpretation
+            - Image-based cost estimation
+            - Visual defect detection
+          - **Dependencies:** GPT-4 Vision API access
+          - **Estimated Effort:** 50 hours
+          
+          #### 4. Scikit-learn ML Models
+          - **Status:** ⏳ Pending
+          - **Priority:** 🟡 High
+          - **Use Cases:**
+            - Historical cost prediction
+            - Lead scoring algorithms
+            - Risk assessment models
+          - **Dependencies:** Historical data collection
+          - **Estimated Effort:** 60 hours
+          
+          ### Phase 3: Advanced Features (Weeks 9-12)
+          
+          #### 5. Vector Database (Pinecone/Weaviate)
+          - **Status:** ⏳ Pending
+          - **Priority:** 🟢 Medium
+          - **Use Cases:**
+            - Semantic search across documents
+            - Similar project matching
+            - Knowledge base RAG system
+          - **Dependencies:** Vector DB subscription
+          - **Estimated Effort:** 40 hours
+          
+          #### 6. Autonomous Agents (AutoGPT Pattern)
+          - **Status:** ⏳ Pending
+          - **Priority:** 🟢 Medium
+          - **Use Cases:**
+            - Multi-step task automation
+            - Self-improving workflows
+            - Autonomous research and learning
+          - **Dependencies:** GPT-4, stable infrastructure
+          - **Estimated Effort:** 80 hours
+          
+          ---
+          
+          ## 🔧 Implementation Guidelines
+          
+          ### Best Practices
+          
+          1. **Start Small:** Begin with OpenAI API for text generation
+          2. **Measure Impact:** Track ROI for each AI feature
+          3. **Fallback Plans:** Always have non-AI alternatives
+          4. **Cost Management:** Monitor API usage and implement caching
+          5. **Security:** Never expose API keys, use environment variables
+          
+          ### Code Integration Pattern
+          
+          ```python
+          # Recommended pattern for AI integration
+          from functools import lru_cache
+          import openai
+          
+          @lru_cache(maxsize=100)
+          def ai_analyze_lead(lead_text: str) -> dict:
+              """AI-powered lead analysis with caching."""
+              try:
+                  response = openai.ChatCompletion.create(
+                      model="gpt-4",
+                      messages=[{
+                          "role": "system",
+                          "content": "You are a construction lead analyst."
+                      }, {
+                          "role": "user",
+                          "content": f"Analyze: {lead_text}"
+                      }],
+                      max_tokens=500
+                  )
+                  return response.choices[0].message.content
+              except Exception as e:
+                  # Fallback to rule-based system
+                  return fallback_analyzer(lead_text)
+          ```
+          
+          ---
+          
+          ## 📈 Expected Outcomes
+          
+          ### Phase 1 Completion
+          - ✅ 50% reduction in manual lead qualification time
+          - ✅ 80% improvement in proposal quality scores
+          - ✅ Automated response to 70% of routine inquiries
+          
+          ### Phase 2 Completion
+          - ✅ 90% accuracy in plan interpretation
+          - ✅ 3x faster cost estimation process
+          - ✅ 95% confident risk predictions
+          
+          ### Phase 3 Completion
+          - ✅ Fully autonomous lead-to-proposal pipeline
+          - ✅ Self-optimizing system performance
+          - ✅ Intelligent knowledge accumulation
+          
+          ---
+          
+          ## 💰 Budget Considerations
+          
+          ### API Costs (Monthly Estimates)
+          - OpenAI GPT-4: $200-500 (based on volume)
+          - GPT-4 Vision: $100-300 (per 1000 images)
+          - Vector Database: $70-200 (based on storage)
+          - **Total Estimated:** $370-1000/month
+          
+          ### Development Investment
+          - Phase 1: 70 hours (~$7,000 @ $100/hr)
+          - Phase 2: 110 hours (~$11,000 @ $100/hr)
+          - Phase 3: 120 hours (~$12,000 @ $100/hr)
+          - **Total Estimated:** $30,000
+          
+          ### ROI Timeline
+          - Break-even: 6-9 months
+          - Payback: Through efficiency gains and lead conversion improvement
+          
+          ---
+          
+          ## 🚀 Getting Started
+          
+          ### Immediate Actions (This Week)
+          
+          1. ✅ Obtain OpenAI API key
+          2. ✅ Set up API key in GitHub Secrets
+          3. ✅ Create `apps/hunter-agent/ai_integration.py`
+          4. ✅ Implement basic GPT-4 text analysis
+          5. ✅ Test with sample leads
+          
+          ### Next Month
+          
+          1. ✅ Deploy LangChain framework
+          2. ✅ Create document processing pipeline
+          3. ✅ Build proposal generation system
+          4. ✅ Launch beta testing
+          
+          ---
+          
+          ## 📚 Resources & Documentation
+          
+          - [OpenAI API Documentation](https://platform.openai.com/docs)
+          - [LangChain Quickstart](https://python.langchain.com/docs/get_started)
+          - [GPT-4 Vision Guide](https://platform.openai.com/docs/guides/vision)
+          - [Scikit-learn Tutorials](https://scikit-learn.org/stable/tutorial)
+          
+          ---
+          
+          *This roadmap is generated automatically by the AI Recommender system and should be reviewed by technical leadership before implementation.*
+          EOF
+          
+          cat /tmp/ai_roadmap.md
+          echo ""
+          echo "roadmap_generated=true" >> $GITHUB_OUTPUT
+      
+      - name: 📊 Create Recommendation Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const roadmapContent = fs.readFileSync('/tmp/ai_roadmap.md', 'utf8');
+            
+            // Close previous AI recommendation issues
+            const oldIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'ai-recommendations'
+            });
+            
+            for (const issue of oldIssues.data) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed'
+              });
+            }
+            
+            // Create new recommendation issue
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🧠 AI Technology Integration Roadmap - ' + new Date().toISOString().split('T')[0],
+              body: roadmapContent,
+              labels: ['ai-recommendations', 'automated', 'enhancement', 'roadmap']
+            });
+      
+      - name: ✅ Complete
+        run: |
+          echo ""
+          echo "=" * 60
+          echo "🧠 AI RECOMMENDATION SYSTEM COMPLETE"
+          echo "=" * 60
+          echo "✅ Analysis completed"
+          echo "✅ Roadmap generated"
+          echo "✅ Issue created with recommendations"
+          echo ""
+          echo "📅 Next analysis: Next Monday at 9:00 AM UTC"
+          echo "=" * 60

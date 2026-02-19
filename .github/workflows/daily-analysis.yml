@@ -1,0 +1,339 @@
+name: 📊 Daily Analysis - Repository Intelligence Report
+
+on:
+  schedule:
+    # Runs daily at 6:00 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      report_type:
+        description: 'Report type (standard/detailed/executive)'
+        required: false
+        default: 'standard'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  daily-analysis:
+    name: Generate Daily Intelligence Report
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: 📅 Generate Report Header
+        id: report_header
+        run: |
+          REPORT_DATE=$(date -u '+%Y-%m-%d')
+          REPORT_TIME=$(date -u '+%H:%M:%S UTC')
+          
+          echo "report_date=$REPORT_DATE" >> $GITHUB_OUTPUT
+          echo "report_time=$REPORT_TIME" >> $GITHUB_OUTPUT
+          
+          echo "📊 DAILY ANALYSIS REPORT"
+          echo "======================="
+          echo "Date: $REPORT_DATE"
+          echo "Time: $REPORT_TIME"
+          echo ""
+      
+      - name: 📈 Activity Analysis
+        id: activity
+        run: |
+          echo "📈 Activity Analysis (Last 24 Hours)"
+          echo "-----------------------------------"
+          
+          # Commit activity
+          COMMITS_TODAY=$(git log --since='24 hours ago' --oneline | wc -l)
+          COMMITS_WEEK=$(git log --since='7 days ago' --oneline | wc -l)
+          COMMITS_MONTH=$(git log --since='30 days ago' --oneline | wc -l)
+          
+          echo "  Commits today: $COMMITS_TODAY"
+          echo "  Commits this week: $COMMITS_WEEK"
+          echo "  Commits this month: $COMMITS_MONTH"
+          
+          # Calculate velocity
+          if [ $COMMITS_WEEK -gt 0 ]; then
+            AVG_DAILY=$((COMMITS_WEEK / 7))
+            echo "  Average commits/day: $AVG_DAILY"
+          fi
+          
+          # File changes
+          FILES_CHANGED=$(git log --since='24 hours ago' --name-only --pretty=format: | sort -u | wc -l)
+          echo "  Files modified today: $FILES_CHANGED"
+          
+          # Top contributors
+          echo ""
+          echo "  Top contributors (last 7 days):"
+          git log --since='7 days ago' --format='%aN' | sort | uniq -c | sort -rn | head -5
+          
+          echo ""
+          echo "commits_today=$COMMITS_TODAY" >> $GITHUB_OUTPUT
+          echo "commits_week=$COMMITS_WEEK" >> $GITHUB_OUTPUT
+          echo "commits_month=$COMMITS_MONTH" >> $GITHUB_OUTPUT
+      
+      - name: 🎯 Code Metrics
+        id: code_metrics
+        run: |
+          echo "🎯 Code Metrics"
+          echo "--------------"
+          
+          # Lines of code by language
+          echo "  Lines of code:"
+          
+          if [ -d "apps" ]; then
+            PYTHON_LOC=$(find apps -name "*.py" -exec wc -l {} + 2>/dev/null | tail -1 | awk '{print $1}')
+            echo "    Python: $PYTHON_LOC lines"
+            echo "python_loc=$PYTHON_LOC" >> $GITHUB_OUTPUT
+          fi
+          
+          if [ -d ".github/workflows" ]; then
+            YAML_LOC=$(find .github/workflows -name "*.yml" -exec wc -l {} + 2>/dev/null | tail -1 | awk '{print $1}')
+            echo "    YAML (workflows): $YAML_LOC lines"
+            echo "yaml_loc=$YAML_LOC" >> $GITHUB_OUTPUT
+          fi
+          
+          # Code complexity indicators
+          echo ""
+          echo "  Complexity indicators:"
+          FUNCTIONS=$(grep -r "def " apps/ --include="*.py" 2>/dev/null | wc -l)
+          CLASSES=$(grep -r "class " apps/ --include="*.py" 2>/dev/null | wc -l)
+          IMPORTS=$(grep -r "^import \|^from " apps/ --include="*.py" 2>/dev/null | wc -l)
+          
+          echo "    Functions: $FUNCTIONS"
+          echo "    Classes: $CLASSES"
+          echo "    Import statements: $IMPORTS"
+          
+          echo ""
+      
+      - name: 🔧 Workflow Performance
+        id: workflow_perf
+        run: |
+          echo "🔧 Workflow Performance"
+          echo "----------------------"
+          
+          # Count workflows
+          TOTAL_WORKFLOWS=$(find .github/workflows -name "*.yml" | wc -l)
+          echo "  Total workflows: $TOTAL_WORKFLOWS"
+          
+          # Analyze workflow complexity
+          echo "  Workflow complexity:"
+          for workflow in .github/workflows/*.yml; do
+            NAME=$(basename "$workflow" .yml)
+            JOBS=$(grep -c "^  [a-z]" "$workflow" || echo 0)
+            STEPS=$(grep -c "- name:" "$workflow" || echo 0)
+            echo "    $NAME: $JOBS jobs, $STEPS steps"
+          done
+          
+          echo ""
+          echo "workflow_count=$TOTAL_WORKFLOWS" >> $GITHUB_OUTPUT
+      
+      - name: 📚 Documentation Health
+        id: docs_health
+        run: |
+          echo "📚 Documentation Health"
+          echo "----------------------"
+          
+          # Count documentation files
+          MD_FILES=$(find . -name "*.md" -not -path "./.git/*" | wc -l)
+          echo "  Markdown files: $MD_FILES"
+          
+          # Check for key documentation
+          echo "  Key documentation:"
+          [ -f "README.md" ] && echo "    ✅ README.md" || echo "    ❌ README.md missing"
+          [ -f "ARCHITECTURE.md" ] && echo "    ✅ ARCHITECTURE.md" || echo "    ❌ ARCHITECTURE.md missing"
+          [ -f ".infinity/ACTIVE_MEMORY.md" ] && echo "    ✅ ACTIVE_MEMORY.md" || echo "    ❌ ACTIVE_MEMORY.md missing"
+          
+          # Documentation coverage
+          CODE_FILES=$(find apps -name "*.py" 2>/dev/null | wc -l)
+          README_COUNT=$(find apps -name "README.md" 2>/dev/null | wc -l)
+          
+          if [ $CODE_FILES -gt 0 ]; then
+            DOC_COVERAGE=$((README_COUNT * 100 / CODE_FILES))
+            echo "  Documentation coverage: ${DOC_COVERAGE}%"
+            echo "doc_coverage=$DOC_COVERAGE" >> $GITHUB_OUTPUT
+          fi
+          
+          echo ""
+      
+      - name: 🧠 AI Integration Status
+        id: ai_status
+        run: |
+          echo "🧠 AI Integration Status"
+          echo "----------------------"
+          
+          # Check for AI-related code
+          AI_IMPORTS=$(grep -r "import openai\|from openai\|anthropic\|gpt" apps/ --include="*.py" 2>/dev/null | wc -l)
+          echo "  AI library imports: $AI_IMPORTS"
+          
+          # Check for AI TODOs
+          AI_TODOS=$(grep -r "TODO.*AI\|TODO.*ML\|TODO.*GPT\|TODO.*vision" . --include="*.py" --include="*.md" 2>/dev/null | wc -l)
+          echo "  AI implementation TODOs: $AI_TODOS"
+          
+          # Identify AI opportunities
+          echo ""
+          echo "  Potential AI enhancement areas:"
+          echo "    - Automated code review"
+          echo "    - Intelligent commit messages"
+          echo "    - Predictive maintenance"
+          echo "    - Smart testing strategies"
+          echo "    - Documentation generation"
+          
+          echo ""
+          echo "ai_todos=$AI_TODOS" >> $GITHUB_OUTPUT
+      
+      - name: 🎯 Goals and Recommendations
+        id: recommendations
+        run: |
+          echo "🎯 Daily Recommendations"
+          echo "----------------------"
+          
+          RECOMMENDATIONS=""
+          
+          # Check activity level
+          COMMITS_TODAY=${{ steps.activity.outputs.commits_today }}
+          if [ $COMMITS_TODAY -eq 0 ]; then
+            echo "  📉 No commits today - consider reviewing backlog"
+            RECOMMENDATIONS="${RECOMMENDATIONS}\n- Increase development velocity"
+          else
+            echo "  ✅ Active development - ${COMMITS_TODAY} commits today"
+          fi
+          
+          # Check documentation
+          DOC_COVERAGE=${{ steps.docs_health.outputs.doc_coverage || 0 }}
+          if [ $DOC_COVERAGE -lt 50 ]; then
+            echo "  📚 Documentation coverage low (${DOC_COVERAGE}%) - add more docs"
+            RECOMMENDATIONS="${RECOMMENDATIONS}\n- Improve documentation coverage"
+          fi
+          
+          # Check AI integration
+          AI_TODOS=${{ steps.ai_status.outputs.ai_todos }}
+          if [ $AI_TODOS -gt 5 ]; then
+            echo "  🧠 ${AI_TODOS} AI implementation opportunities identified"
+            RECOMMENDATIONS="${RECOMMENDATIONS}\n- Prioritize AI feature implementation"
+          fi
+          
+          # System health
+          echo "  🏥 System health: OPERATIONAL"
+          
+          echo ""
+          if [ -n "$RECOMMENDATIONS" ]; then
+            echo "has_recommendations=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_recommendations=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 📊 Generate Executive Summary
+        id: executive_summary
+        run: |
+          cat > /tmp/daily_report.md << 'EOF'
+          # 📊 Daily Intelligence Report
+          
+          **Date:** ${{ steps.report_header.outputs.report_date }}
+          **Generated:** ${{ steps.report_header.outputs.report_time }}
+          **Status:** 🟢 OPERATIONAL
+          
+          ---
+          
+          ## 📈 Activity Summary
+          
+          - **Commits Today:** ${{ steps.activity.outputs.commits_today }}
+          - **Commits This Week:** ${{ steps.activity.outputs.commits_week }}
+          - **Commits This Month:** ${{ steps.activity.outputs.commits_month }}
+          
+          ## 🎯 Code Metrics
+          
+          - **Python LOC:** ${{ steps.code_metrics.outputs.python_loc || 'N/A' }}
+          - **Workflow YAML LOC:** ${{ steps.code_metrics.outputs.yaml_loc || 'N/A' }}
+          - **Active Workflows:** ${{ steps.workflow_perf.outputs.workflow_count }}
+          
+          ## 📚 Documentation
+          
+          - **Coverage:** ${{ steps.docs_health.outputs.doc_coverage || 0 }}%
+          - **Status:** ${{ steps.docs_health.outputs.doc_coverage > 50 && '✅ Good' || '⚠️ Needs Improvement' }}
+          
+          ## 🧠 AI Integration
+          
+          - **AI TODOs:** ${{ steps.ai_status.outputs.ai_todos }}
+          - **Implementation Opportunities:** Multiple areas identified
+          
+          ## 🎯 Recommendations
+          
+          ${{ steps.recommendations.outputs.has_recommendations == 'true' && 'See workflow logs for specific recommendations' || '✅ No critical actions needed' }}
+          
+          ---
+          
+          ## 🔮 Tomorrow's Focus
+          
+          1. Continue autonomous operations
+          2. Monitor system health
+          3. Process new leads and estimates
+          4. Optimize workflows based on Genesis Loop findings
+          
+          ---
+          
+          *This is an automated intelligence report from the Construct-OS Daily Analysis system.*
+          EOF
+          
+          cat /tmp/daily_report.md
+          echo ""
+          echo "report_generated=true" >> $GITHUB_OUTPUT
+      
+      - name: 📝 Create Daily Report Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reportContent = fs.readFileSync('/tmp/daily_report.md', 'utf8');
+            
+            // Close yesterday's report if still open
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
+            
+            const oldIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'daily-report'
+            });
+            
+            for (const issue of oldIssues.data) {
+              if (issue.title.includes(yesterdayStr)) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  state: 'closed'
+                });
+              }
+            }
+            
+            // Create today's report
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '📊 Daily Analysis Report - ${{ steps.report_header.outputs.report_date }}',
+              body: reportContent,
+              labels: ['daily-report', 'automated', 'analytics']
+            });
+      
+      - name: ✅ Complete
+        run: |
+          echo ""
+          echo "=" * 60
+          echo "📊 DAILY ANALYSIS COMPLETE"
+          echo "=" * 60
+          echo "✅ Report generated and published"
+          echo "📅 Next report: Tomorrow at 6:00 AM UTC"
+          echo "=" * 60

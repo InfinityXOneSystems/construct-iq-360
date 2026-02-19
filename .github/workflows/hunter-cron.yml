@@ -1,0 +1,57 @@
+name: 🎯 Hunter Agent - Autonomous Lead Scraper
+
+on:
+  schedule:
+    # Runs daily at 8:00 AM UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch: # Allow manual triggers
+
+jobs:
+  hunt:
+    name: Execute Hunt Protocol
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: 📦 Install Dependencies
+        run: |
+          cd apps/hunter-agent
+          pip install -r requirements.txt
+      
+      - name: 🎯 Execute Hunter Agent
+        run: |
+          echo "🎯 INITIALIZING HUNTER PROTOCOL"
+          echo "================================"
+          cd apps/hunter-agent
+          python main.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 💾 Archive Hunt Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hunt-results-${{ github.run_number }}
+          path: apps/hunter-agent/output/
+          retention-days: 30
+      
+      - name: 🚨 Notify on Failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Hunter Agent Failure - ' + new Date().toISOString(),
+              body: '**System Alert**: Hunter agent encountered an error during scheduled execution.\n\nWorkflow Run: ' + context.serverUrl + '/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId,
+              labels: ['bug', 'automated', 'hunter-agent']
+            })

@@ -1,0 +1,303 @@
+name: 🔧 Conflict Resolver - Autonomous Conflict Resolution
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to resolve conflicts for'
+        required: false
+        type: number
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  detect-conflicts:
+    name: 🔍 Detect Merge Conflicts
+    runs-on: ubuntu-latest
+    outputs:
+      has_conflicts: ${{ steps.check.outputs.has_conflicts }}
+      pr_number: ${{ steps.check.outputs.pr_number }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🔍 Check for Conflicts
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let prNumber;
+            
+            if (context.eventName === 'workflow_dispatch') {
+              prNumber = ${{ github.event.inputs.pr_number || 'null' }};
+              if (!prNumber) {
+                console.log('No PR number provided for manual run');
+                return;
+              }
+            } else if (context.eventName === 'pull_request') {
+              prNumber = context.issue.number;
+            } else {
+              console.log('Unexpected event type:', context.eventName);
+              return;
+            }
+            
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            
+            console.log('🔍 CONFLICT DETECTION');
+            console.log('====================');
+            console.log(`PR #${pr.number}: ${pr.title}`);
+            console.log(`User: ${pr.user.login}`);
+            console.log(`Mergeable: ${pr.mergeable}`);
+            console.log(`State: ${pr.mergeable_state}`);
+            
+            // Only process autonomous PRs
+            const isAutonomous = pr.user.login === 'Copilot' || 
+                                pr.user.login === 'copilot-swe-agent[bot]';
+            
+            if (!isAutonomous) {
+              console.log('⏭️  Skipping non-autonomous PR');
+              core.setOutput('has_conflicts', 'false');
+              return;
+            }
+            
+            core.setOutput('pr_number', prNumber.toString());
+            
+            if (pr.mergeable === false) {
+              console.log('⚠️  CONFLICTS DETECTED');
+              core.setOutput('has_conflicts', 'true');
+            } else {
+              console.log('✅ No conflicts');
+              core.setOutput('has_conflicts', 'false');
+            }
+
+  resolve-conflicts:
+    name: 🔧 Resolve Conflicts
+    runs-on: ubuntu-latest
+    needs: detect-conflicts
+    if: needs.detect-conflicts.outputs.has_conflicts == 'true'
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 🔧 Attempt Automatic Resolution
+        id: resolve
+        run: |
+          echo "🔧 AUTOMATIC CONFLICT RESOLUTION"
+          echo "================================"
+          
+          # Get PR details
+          PR_NUMBER="${{ needs.detect-conflicts.outputs.pr_number }}"
+          
+          # Configure git
+          git config user.name "Overseer-Prime"
+          git config user.email "overseer@construct-os.infinityxonesystems.com"
+          
+          # Get PR branch
+          PR_BRANCH=$(gh pr view $PR_NUMBER --json headRefName -q .headRefName)
+          echo "PR Branch: $PR_BRANCH"
+          
+          # Checkout PR branch
+          git fetch origin $PR_BRANCH
+          git checkout $PR_BRANCH
+          
+          # Fetch main
+          git fetch origin main
+          
+          echo ""
+          echo "Attempting strategy: Rebase"
+          echo "----------------------------"
+          
+          # Try rebase first
+          if git rebase origin/main; then
+            echo "✅ Rebase successful!"
+            
+            # Push with force-with-lease
+            if git push --force-with-lease origin $PR_BRANCH; then
+              echo "✅ Successfully pushed rebased branch"
+              echo "resolution_method=rebase" >> $GITHUB_OUTPUT
+              echo "resolution_status=success" >> $GITHUB_OUTPUT
+              exit 0
+            else
+              echo "❌ Failed to push rebased branch"
+              echo "resolution_status=push_failed" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          else
+            echo "⚠️  Rebase failed, trying merge strategy"
+            git rebase --abort
+            
+            echo ""
+            echo "Attempting strategy: Merge"
+            echo "--------------------------"
+            
+            # Try merge
+            if git merge origin/main --no-edit; then
+              echo "✅ Merge successful!"
+              
+              # Push merged branch
+              if git push origin $PR_BRANCH; then
+                echo "✅ Successfully pushed merged branch"
+                echo "resolution_method=merge" >> $GITHUB_OUTPUT
+                echo "resolution_status=success" >> $GITHUB_OUTPUT
+                exit 0
+              else
+                echo "❌ Failed to push merged branch"
+                echo "resolution_status=push_failed" >> $GITHUB_OUTPUT
+                exit 1
+              fi
+            else
+              echo "❌ Automatic merge failed"
+              git merge --abort
+              echo "resolution_method=none" >> $GITHUB_OUTPUT
+              echo "resolution_status=failed" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 📝 Comment on PR - Success
+        if: steps.resolve.outputs.resolution_status == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const method = '${{ steps.resolve.outputs.resolution_method }}';
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt('${{ needs.detect-conflicts.outputs.pr_number }}'),
+              body: `## ✅ Conflicts Automatically Resolved
+
+**Overseer-Prime** has successfully resolved merge conflicts.
+
+### Resolution Details
+- **Method**: ${method.toUpperCase()}
+- **Status**: ✅ SUCCESS
+- **Branch**: Updated and pushed
+
+### Next Steps
+- ✅ Conflicts resolved
+- ⏳ Awaiting CI checks
+- 🚀 Auto-merge will proceed on CI pass
+
+---
+*Autonomous resolution via Ouroboros Protocol*`
+            });
+      
+      - name: 📝 Comment on PR - Failure
+        if: steps.resolve.outputs.resolution_status == 'failed'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt('${{ needs.detect-conflicts.outputs.pr_number }}'),
+              body: `## ⚠️ Manual Conflict Resolution Required
+
+**Overseer-Prime** attempted automatic conflict resolution but complex conflicts require manual intervention.
+
+### Resolution Attempts
+- ❌ Rebase strategy: Failed
+- ❌ Merge strategy: Failed
+
+### Required Action
+Please resolve conflicts manually:
+\`\`\`bash
+git fetch origin main
+git checkout ${{ needs.detect-conflicts.outputs.pr_branch }}
+git rebase origin/main
+# Resolve conflicts
+git rebase --continue
+git push --force-with-lease
+\`\`\`
+
+---
+*Autonomous operation via Ouroboros Protocol*`
+            });
+            
+            // Add label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt('${{ needs.detect-conflicts.outputs.pr_number }}'),
+              labels: ['needs-manual-resolution']
+            });
+
+  validate-resolution:
+    name: ✅ Validate Resolution
+    runs-on: ubuntu-latest
+    needs: [detect-conflicts, resolve-conflicts]
+    if: needs.resolve-conflicts.result == 'success'
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: ✅ Verify Conflict Resolution
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = parseInt('${{ needs.detect-conflicts.outputs.pr_number }}');
+            
+            console.log('✅ VALIDATING CONFLICT RESOLUTION');
+            console.log('=================================');
+            
+            // Wait a moment for GitHub to process
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            
+            console.log(`PR #${pr.number}: ${pr.title}`);
+            console.log(`Mergeable: ${pr.mergeable}`);
+            console.log(`State: ${pr.mergeable_state}`);
+            
+            if (pr.mergeable === false) {
+              console.log('❌ Conflicts still present after resolution attempt');
+              throw new Error('Conflict resolution validation failed');
+            } else if (pr.mergeable === true) {
+              console.log('✅ Conflicts successfully resolved!');
+            } else {
+              console.log('⏳ Mergeable status pending, but likely resolved');
+            }
+            
+            // Add success label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              labels: ['conflicts-resolved']
+            });
+            
+            // Remove manual resolution label if present
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                name: 'needs-manual-resolution'
+              });
+            } catch (error) {
+              // Label might not exist, that's fine
+            }

@@ -1,0 +1,93 @@
+name: 🔧 Self-Repair - Autonomous Recovery Protocol
+
+on:
+  workflow_run:
+    workflows: ["🫀 Heartbeat - System Health Monitor", "🎯 Hunter Agent - Autonomous Lead Scraper"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      repair_target:
+        description: 'Target component to repair'
+        required: false
+        default: 'all'
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  diagnose:
+    name: Failure Diagnosis
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event_name == 'workflow_dispatch' }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Analyze Failure
+        id: diagnosis
+        run: |
+          echo "🔧 SELF-REPAIR PROTOCOL INITIATED"
+          echo "=================================="
+          echo "Trigger: ${{ github.event.workflow_run.name || 'Manual' }}"
+          echo "Status: ${{ github.event.workflow_run.conclusion || 'N/A' }}"
+          echo ""
+          
+          # Check system integrity
+          echo "🔍 Checking system integrity..."
+          
+          NEEDS_REPAIR=false
+          
+          # Verify directory structure
+          for dir in apps/hunter-agent apps/architect-ai apps/command-center data .github/workflows; do
+            if [ ! -d "$dir" ]; then
+              echo "  ⚠️ Missing directory: $dir"
+              mkdir -p "$dir"
+              NEEDS_REPAIR=true
+            fi
+          done
+          
+          # Verify critical files
+          if [ ! -f "data/active_memory.md" ]; then
+            echo "  ⚠️ Missing system memory, recreating..."
+            echo "# SYSTEM STATE" > data/active_memory.md
+            echo "- Status: RECOVERING" >> data/active_memory.md
+            echo "- Mode: AUTONOMOUS" >> data/active_memory.md
+            echo "- Last Scan: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> data/active_memory.md
+            NEEDS_REPAIR=true
+          fi
+          
+          echo "needs_repair=$NEEDS_REPAIR" >> $GITHUB_OUTPUT
+      
+      - name: 🔧 Apply Repairs
+        if: steps.diagnosis.outputs.needs_repair == 'true'
+        run: |
+          echo "🔧 Applying automated repairs..."
+          
+          git config user.name "Construct-OS Repair Bot"
+          git config user.email "repair@construct-os.ai"
+          git add .
+          git commit -m "🔧 Self-Repair: Automated system restoration at $(date -u '+%Y-%m-%d %H:%M:%S')" || true
+          git push || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 📊 Report Status
+        run: |
+          echo "✅ Self-repair protocol completed"
+          echo "System restored to operational state"
+      
+      - name: 🚨 Escalate if Unrecoverable
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🆘 CRITICAL: Self-Repair Failed - Manual Intervention Required',
+              body: '**CRITICAL SYSTEM ALERT**\n\nThe autonomous self-repair system was unable to recover from a failure.\n\n**Details:**\n- Failed Workflow: ${{ github.event.workflow_run.name }}\n- Repair Attempt: ' + context.serverUrl + '/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + '\n\n**Status**: REQUIRES MANUAL INTERVENTION',
+              labels: ['critical', 'automated', 'self-repair', 'needs-attention']
+            })

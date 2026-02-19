@@ -1,0 +1,70 @@
+name: 🫀 Heartbeat - System Health Monitor
+
+on:
+  schedule:
+    # Runs every 5 minutes
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allow manual triggers
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  health-check:
+    name: System Health Verification
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Verify System Components
+        run: |
+          echo "🫀 CONSTRUCT-OS HEARTBEAT"
+          echo "=========================="
+          echo "Timestamp: $(date -u)"
+          echo ""
+          echo "✅ Checking system components..."
+          
+          # Verify critical directories exist
+          for dir in apps/hunter-agent apps/architect-ai apps/command-center data; do
+            if [ -d "$dir" ]; then
+              echo "  ✓ $dir exists"
+            else
+              echo "  ✗ $dir MISSING"
+              exit 1
+            fi
+          done
+          
+          # Verify critical files exist
+          if [ -f "data/active_memory.md" ]; then
+            echo "  ✓ System memory intact"
+          else
+            echo "  ✗ System memory CORRUPTED"
+            exit 1
+          fi
+          
+          echo ""
+          echo "💚 System Status: HEALTHY"
+      
+      - name: 📊 Update Active Memory
+        run: |
+          echo "Updating system state..."
+          sed -i "s/Last Scan: .*/Last Scan: $(date -u '+%Y-%m-%d %H:%M:%S UTC')/" data/active_memory.md || true
+          
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "Construct-OS Bot"
+            git config user.email "bot@construct-os.ai"
+            git add data/active_memory.md
+            git commit -m "🫀 Heartbeat: System scan at $(date -u '+%Y-%m-%d %H:%M:%S')"
+            git push
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 🚨 Notify on Failure
+        if: failure()
+        run: |
+          echo "⚠️ SYSTEM HEALTH CHECK FAILED"
+          echo "Triggering self-repair protocol..."

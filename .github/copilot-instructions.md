@@ -222,3 +222,48 @@ Send via `POST https://api.github.com/repos/InfinityXOneSystems/construct-iq-360
 - Retainage: 10% to 50% completion, then 5%
 - Lead qualification threshold: ≥ $100K project value
 - Templates: residential bid, commercial bid, TI bid, change order, subcontractor agreement, lien waiver, checklists, runbooks
+
+---
+
+## AGENT SYSTEM (Biz-Ops v2)
+
+Six autonomous agents, each with a JSON blueprint in `apps/biz-ops/blueprints/`:
+
+| Agent | Role | Source |
+|-------|------|--------|
+| Hunter | Lead acquisition (Orlando permits + Google Maps) | apps/hunter-agent/main.py |
+| Architect | CSI estimation + AIA billing + Vertex AI AutoML | apps/architect-ai/estimator.py |
+| Orator | Document generation (11+ templates) | src/lib/templates.ts |
+| Shadow | Headless browser REST API (form fill, snapshot) | apps/hunter-agent/scraper_orchestrator.py |
+| Commander | Deployment + workflow health + Genesis Loop | .github/workflows/genesis-loop.yml |
+| Vault | Enterprise memory + context rehydration | apps/biz-ops/memory/vault_memory.py |
+
+### Agent Manager
+```bash
+python apps/biz-ops/agent_manager.py --agent hunter --action run
+python apps/biz-ops/agent_manager.py --agent architect --action estimate
+python apps/biz-ops/agent_manager.py --agent orator --action generate --payload '{"doc_type":"residential-bid"}'
+python apps/biz-ops/agent_manager.py --agent vault --action rehydrate
+```
+
+### ChatGPT Custom GPT Action
+The `public/openapi.yaml` file is the OpenAPI spec for a ChatGPT Custom GPT action.
+It calls `POST https://api.github.com/repos/.../dispatches` with a GitHub PAT to trigger runners.
+See: AI Hub page → Orchestrator tab for full setup instructions.
+
+### Copilot Mobile
+`.github/copilot-instructions.md` (this file) is automatically read by Copilot Mobile.
+Use the curl commands in the AI Hub → Copilot Mobile tab to trigger runners from mobile.
+
+## UI RULES (MANDATORY)
+- NO emojis anywhere in the UI — use SVG icons only
+- Color palette: bg-dark-bg (#000000), bg-dark-surface (#0a0a0a), text-neon-green (#39FF14)
+- Typography: font-mono, uppercase tracking-widest for labels
+- Borders: border-neon-green/10 to /30 for UI elements
+- All new pages go in src/app/(app)/ and require auth guard via layout.tsx
+
+## INFRASTRUCTURE
+- Docker Compose: `docker-compose.yml` — command-center, shadow-api, biz-ops, vault, redis
+- Terraform: `infra/terraform/main.tf` — GCP Vertex AI, Cloud Run, service accounts
+- Validation: `.github/workflows/universal-validation.yml` — 7-step lint/build/test/security
+- Plugin Adapter: `src/lib/plugin-adapter.ts` — typed connectors for external services

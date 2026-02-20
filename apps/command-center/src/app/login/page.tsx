@@ -47,23 +47,25 @@ export default function LoginPage() {
       <div className="relative z-10 w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 border-2 border-neon-green rounded-lg mb-4 bg-neon-green/10">
-            <span className="text-3xl">🏗️</span>
+          <div className="inline-flex items-center justify-center w-14 h-14 border border-neon-green/40 rounded mb-4 bg-neon-green/5">
+            <svg className="w-7 h-7 text-neon-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
           </div>
-          <h1 className="text-3xl font-bold text-neon-green glow-text">CONSTRUCT-OS</h1>
-          <p className="text-gray-400 text-sm mt-1">Command Center — Professional Edition</p>
+          <h1 className="text-2xl font-bold text-neon-green tracking-widest uppercase">CONSTRUCT-OS</h1>
+          <p className="text-gray-600 text-xs mt-1 tracking-wider uppercase">Command Center v2</p>
         </div>
 
         {/* Login Card */}
-        <div className="bg-dark-surface border border-neon-green/30 rounded-xl p-8 shadow-2xl shadow-neon-green/5">
-          <h2 className="text-xl font-bold text-white mb-2">Sign in with GitHub</h2>
-          <p className="text-gray-400 text-sm mb-6">
+        <div className="bg-dark-surface border border-neon-green/20 rounded p-8">
+          <h2 className="text-sm font-bold text-white mb-1 uppercase tracking-widest">Authenticate</h2>
+          <p className="text-gray-600 text-xs mb-6 tracking-wide">
             Enter your GitHub Personal Access Token to access the Command Center.
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label htmlFor="token" className="block text-xs text-gray-400 uppercase tracking-wider mb-2">
+              <label htmlFor="token" className="block text-xs text-gray-500 uppercase tracking-widest mb-2">
                 GitHub Personal Access Token
               </label>
               <input
@@ -73,9 +75,9 @@ export default function LoginPage() {
                 onChange={e => setToken(e.target.value)}
                 placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                 className="
-                  w-full bg-black border border-dark-border rounded-lg px-4 py-3
-                  text-white text-sm font-mono placeholder-gray-600
-                  focus:outline-none focus:border-neon-green focus:ring-1 focus:ring-neon-green/30
+                  w-full bg-black border border-neon-green/10 rounded px-4 py-3
+                  text-white text-sm font-mono placeholder-gray-700
+                  focus:outline-none focus:border-neon-green/50 focus:ring-1 focus:ring-neon-green/20
                   transition-colors
                 "
                 autoComplete="off"
@@ -84,7 +86,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">
+              <div className="border border-red-500/20 rounded px-4 py-3 text-red-400 text-xs bg-red-500/5">
                 {error}
               </div>
             )}
@@ -93,8 +95,8 @@ export default function LoginPage() {
               type="submit"
               disabled={loading}
               className="
-                w-full bg-neon-green text-black font-bold py-3 rounded-lg
-                uppercase tracking-wider text-sm
+                w-full bg-neon-green text-black font-bold py-2.5 rounded
+                uppercase tracking-widest text-xs
                 hover:bg-white transition-colors duration-200
                 disabled:opacity-50 disabled:cursor-not-allowed
                 flex items-center justify-center space-x-2
@@ -102,26 +104,23 @@ export default function LoginPage() {
             >
               {loading ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                  <div className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
                   <span>Verifying...</span>
                 </>
               ) : (
-                <>
-                  <span>🔐</span>
-                  <span>Sign In</span>
-                </>
+                <span>Sign In</span>
               )}
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-dark-border">
-            <p className="text-xs text-gray-500 mb-3">
-              How to create a GitHub PAT:
+          <div className="mt-6 pt-6 border-t border-neon-green/5">
+            <p className="text-xs text-gray-600 mb-3 uppercase tracking-widest">
+              Create a GitHub PAT
             </p>
-            <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
-              <li>Go to GitHub → Settings → Developer settings</li>
+            <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
+              <li>GitHub → Settings → Developer settings</li>
               <li>Personal access tokens → Fine-grained tokens</li>
-              <li>Generate new token with <code className="text-neon-green/70">repo</code> and <code className="text-neon-green/70">read:user</code> scopes</li>
+              <li>Grant <code className="text-neon-green/70">repo</code> and <code className="text-neon-green/70">read:user</code> scopes</li>
               <li>Copy and paste the token above</li>
             </ol>
           </div>
@@ -131,16 +130,18 @@ export default function LoginPage() {
               href="https://github.com/settings/tokens/new"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-neon-green text-xs hover:underline flex items-center space-x-1"
+              className="text-neon-green text-xs hover:underline flex items-center space-x-1.5"
             >
               <span>Create token on GitHub</span>
-              <span>↗</span>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
             </a>
           </div>
         </div>
 
-        <p className="text-center text-gray-600 text-xs mt-6">
-          Powered by Infinity X One Systems · Autonomous Construction Intelligence
+        <p className="text-center text-gray-700 text-xs mt-6 tracking-wider">
+          Infinity X One Systems — Autonomous Construction Intelligence
         </p>
       </div>
     </div>

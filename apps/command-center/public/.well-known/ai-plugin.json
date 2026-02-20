@@ -1,0 +1,18 @@
+{
+  "schema_version": "v1",
+  "name_for_model": "construct_os_orchestrator",
+  "name_for_human": "Construct-OS Orchestrator",
+  "description_for_model": "Dispatch commands to the Construct-OS autonomous construction intelligence platform via GitHub Actions runners. Use this to generate documents, run agents (Hunter, Architect, Orator, Shadow, Commander, Vault), trigger deployments, and interact with the CRM, billing, and template systems. All commands are executed via GitHub API repository_dispatch events.",
+  "description_for_human": "Control the Construct-OS platform: run agents, generate construction documents, manage leads and billing via GitHub Actions runners.",
+  "auth": {
+    "type": "user_http",
+    "authorization_type": "bearer"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://infinityxonesystems.github.io/construct-iq-360/openapi.yaml"
+  },
+  "logo_url": "https://infinityxonesystems.github.io/construct-iq-360/icons/icon-192.png",
+  "contact_email": "admin@infinityxonesystems.com",
+  "legal_info_url": "https://github.com/InfinityXOneSystems/construct-iq-360"
+}

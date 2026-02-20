@@ -1,0 +1,154 @@
+openapi: 3.0.0
+info:
+  title: Construct-OS Infinity Orchestrator API
+  version: 1.0.0
+  description: >
+    GitHub Actions runner bridge for Construct-OS.
+    ChatGPT and Copilot send commands to this API,
+    which fires repository_dispatch events that trigger
+    GitHub Actions workflows on InfinityXOneSystems/construct-iq-360.
+    No separate server is required — GitHub API is the bridge.
+
+servers:
+  - url: https://api.github.com
+    description: GitHub API (public)
+
+paths:
+  /repos/InfinityXOneSystems/construct-iq-360/dispatches:
+    post:
+      operationId: dispatchCommand
+      summary: Send a command to the Infinity Orchestrator via GitHub Actions runner
+      description: >
+        Fires a repository_dispatch event. The dispatch-bridge.yml workflow routes
+        the event_type to the appropriate agent runner.
+        Supported event types: generate-document, build-project, create-agent,
+        deploy-system, genesis-command, run-agent, run-invention-cycle.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DispatchRequest'
+            examples:
+              generate_document:
+                summary: Generate a residential bid document
+                value:
+                  event_type: generate-document
+                  client_payload:
+                    doc_type: residential-bid
+                    project_name: Smith Residence Renovation
+              run_hunter:
+                summary: Run the Hunter lead sniper agent
+                value:
+                  event_type: run-agent
+                  client_payload:
+                    agent: hunter
+                    target: orlando-permits
+              genesis_loop:
+                summary: Trigger Genesis Loop self-optimization
+                value:
+                  event_type: genesis-command
+                  client_payload:
+                    action: self-optimize
+      responses:
+        '204':
+          description: Command accepted — GitHub Actions runner has been triggered
+        '401':
+          description: Authentication failed — check GitHub PAT scope (needs repo)
+        '403':
+          description: Forbidden — PAT does not have required permissions
+        '404':
+          description: Repository not found or PAT does not have access
+        '422':
+          description: Validation failed — check event_type and client_payload
+
+  /repos/InfinityXOneSystems/construct-iq-360/actions/runs:
+    get:
+      operationId: listWorkflowRuns
+      summary: List recent workflow runs (runner status)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: event
+          in: query
+          schema:
+            type: string
+            enum: [repository_dispatch, push, schedule, workflow_dispatch]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [queued, in_progress, completed, waiting]
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 100
+      responses:
+        '200':
+          description: List of workflow runs with status
+
+components:
+  schemas:
+    DispatchRequest:
+      type: object
+      required:
+        - event_type
+      properties:
+        event_type:
+          type: string
+          description: Command type to dispatch to the GitHub Actions runner
+          enum:
+            - generate-document
+            - build-project
+            - create-agent
+            - deploy-system
+            - genesis-command
+            - run-agent
+            - run-invention-cycle
+        client_payload:
+          type: object
+          description: >
+            Command parameters passed to the runner.
+            Structure varies by event_type.
+          properties:
+            doc_type:
+              type: string
+              description: For generate-document — template ID
+              enum:
+                - residential-bid
+                - commercial-bid
+                - ti-bid
+                - change-order
+                - subcontractor-agreement
+                - lien-waiver
+                - pre-construction-checklist
+                - site-safety-checklist
+                - lead-qualification-runbook
+                - bid-preparation-runbook
+            agent:
+              type: string
+              description: For run-agent — agent ID
+              enum: [hunter, architect, orator, shadow, commander, vault]
+            action:
+              type: string
+              description: Action for the agent to perform
+            project_name:
+              type: string
+              description: Project name for document generation
+            target:
+              type: string
+              description: Target for agent runs (e.g. orlando-permits)
+          additionalProperties: true
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: GitHub PAT
+      description: >
+        GitHub Personal Access Token with 'repo' scope.
+        Create at: https://github.com/settings/tokens/new?scopes=repo

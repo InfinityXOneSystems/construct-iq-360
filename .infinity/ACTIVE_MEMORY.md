@@ -9,6 +9,8 @@
 
 ## 🛠️ Active Configuration
 
+-   **System Type:** FULLY AUTONOMOUS END-TO-END CONSTRUCTION BUSINESS SYSTEM
+-   **Capabilities:** Lead Gen, Operations, Billing, Communications (24/7)
 -   **Orchestrator App:** INSTALLED & AUTHORIZED
 -   **Dispatch Bridge:** OPERATIONAL (repository_dispatch receiver) ✅
 -   **Auto-Merge:** ENABLED (Genesis Technology)
@@ -54,6 +56,8 @@
 
 ## 🎯 System State
 
+**System Identity:** FULLY AUTONOMOUS END-TO-END CONSTRUCTION BUSINESS SYSTEM  
+**Core Functions:** Lead Generation, Operations, Billing, Communications (24/7)  
 **Operational Mode:** Autonomous  
 **Governance Protocol:** TAP v2 (Policy > Authority > Truth) — Overseer-Prime (Active)  
 **Self-Healing:** ENHANCED ✅  

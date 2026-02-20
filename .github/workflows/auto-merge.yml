@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'pull_request' && 
+      !github.event.pull_request.draft &&
       (contains(github.event.pull_request.labels.*.name, 'autonomous-verified') ||
        github.event.pull_request.user.login == 'Copilot' ||
        github.event.pull_request.user.login == 'copilot-swe-agent[bot]')
@@ -47,6 +48,12 @@ jobs:
             if (!isAutonomous) {
               console.log('❌ PR is not from autonomous agent');
               return 'not-autonomous';
+            }
+            
+            // Check if PR is draft
+            if (pr.draft) {
+              console.log('⚠️  PR is still in draft status');
+              return 'draft';
             }
             
             // Check if PR is mergeable

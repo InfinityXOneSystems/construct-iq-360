@@ -31,6 +31,10 @@ venv/
 ENV/
 env/
 
+# Exceptions: Next.js source lib is intentionally tracked
+!apps/command-center/src/lib/
+!apps/command-center/src/lib/*
+
 # Node.js
 node_modules/
 npm-debug.log*

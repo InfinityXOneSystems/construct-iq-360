@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from 'next'
 import '../styles/globals.css'
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 export const metadata: Metadata = {
   title: 'Construct-OS Command Center',
   description: 'Central intelligence dashboard for construction lead automation',
-  manifest: '/manifest.json',
+  manifest: `${basePath}/manifest.json`,
 }
 
 export const viewport: Viewport = {
@@ -22,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="icon" type="image/svg+xml" href={`${basePath}/favicon.svg`} />
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       </head>
       <body className="font-mono antialiased">
@@ -31,7 +33,7 @@ export default function RootLayout({
           __html: `
             if ('serviceWorker' in navigator) {
               window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js');
+                navigator.serviceWorker.register('${basePath}/sw.js');
               });
             }
           `

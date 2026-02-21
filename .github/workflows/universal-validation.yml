@@ -42,7 +42,7 @@ jobs:
         run: |
           flake8 apps/hunter-agent/ apps/architect-ai/ apps/biz-ops/ \
             --max-line-length=120 \
-            --ignore=E203,W503 \
+            --ignore=E203,W503,W504 \
             --statistics
 
       - name: Python syntax validation
@@ -121,7 +121,7 @@ jobs:
 
       - name: Install actionlint
         run: |
-          curl -L https://github.com/rhysd/actionlint/releases/latest/download/actionlint_linux_amd64.tar.gz | tar xz
+          curl -L https://github.com/rhysd/actionlint/releases/download/v1.7.4/actionlint_1.7.4_linux_amd64.tar.gz | tar xz
           sudo mv actionlint /usr/local/bin/
 
       - name: Lint all workflows

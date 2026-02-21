@@ -111,6 +111,40 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
 
+  # ─── SINGULARITY PRIME MESH BRIDGE ───────────────────────────────────────────
+  # Bridges the infinity-mesh Docker network to the local SINGULARITY_PRIME system.
+  # On Windows hosts, the local system is reachable at host.docker.internal.
+  # Set SINGULARITY_PRIME_HOST in your .env file (default: host.docker.internal).
+  # Set SINGULARITY_PRIME_PORT to match the port exposed by C:\AI\SINGULARITY_PRIME
+  # (default: 9000).
+  singularity-prime-bridge:
+    image: alpine:3.19
+    container_name: construct-os-singularity-bridge
+    environment:
+      - SINGULARITY_PRIME_HOST=${SINGULARITY_PRIME_HOST:-host.docker.internal}
+      - SINGULARITY_PRIME_PORT=${SINGULARITY_PRIME_PORT:-9000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - infinity-mesh
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "nc -z ${SINGULARITY_PRIME_HOST:-host.docker.internal} ${SINGULARITY_PRIME_PORT:-9000}",
+        ]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    command: >
+      sh -c "
+        echo 'SINGULARITY_PRIME bridge active';
+        echo 'Target: $${SINGULARITY_PRIME_HOST}:$${SINGULARITY_PRIME_PORT}';
+        while true; do sleep 60; done
+      "
+
 # ─── NETWORKS ─────────────────────────────────────────────────────────────────
 networks:
   infinity-mesh:

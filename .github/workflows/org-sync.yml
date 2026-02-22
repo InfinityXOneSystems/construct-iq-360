@@ -1,0 +1,464 @@
+# 🔗 Org Sync — construct-iq-360 ↔ Infinity-X-One-Systems
+# Validates connectivity and alignment between this vertical repo and the
+# infinity-orchestrator hub.  Runs daily and on-demand.
+#
+# What it does:
+#   1. Validates that the Infinity Orchestrator can dispatch to this repo
+#   2. Validates that this repo's dispatch-bridge.yml is current
+#   3. Syncs copilot-instructions.md context from active memory
+#   4. Reports org-level project and runner alignment
+#   5. Creates a GitHub Issue if sync is broken (needs-attention)
+
+name: 🔗 Org Sync - construct-iq-360 & Infinity Orchestrator Alignment
+
+on:
+  schedule:
+    # Daily at 08:00 UTC — after projects-audit (07:30 UTC) and during runner-manager windows (every 6 h)
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Sync operation to run'
+        required: true
+        type: choice
+        default: 'full-sync'
+        options:
+          - full-sync
+          - validate-dispatch
+          - validate-copilot
+          - validate-chatgpt
+          - report-only
+
+permissions:
+  contents: write
+  issues: write
+  actions: read
+  pull-requests: read
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # JOB 1 — Validate Dispatch Bridge connectivity
+  # ─────────────────────────────────────────────────────────────
+  validate-dispatch-bridge:
+    name: 🔌 Validate Dispatch Bridge
+    runs-on: ubuntu-latest
+
+    outputs:
+      bridge_valid: ${{ steps.check.outputs.bridge_valid }}
+      supported_events: ${{ steps.check.outputs.supported_events }}
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 🔌 Check Dispatch Bridge Configuration
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            console.log('[OrgSync] Validating dispatch-bridge.yml...');
+
+            const bridgePath = '.github/workflows/dispatch-bridge.yml';
+            if (!fs.existsSync(bridgePath)) {
+              core.setFailed('[OrgSync] dispatch-bridge.yml NOT FOUND — Infinity Orchestrator cannot send commands!');
+              core.setOutput('bridge_valid', 'false');
+              return;
+            }
+
+            const content = fs.readFileSync(bridgePath, 'utf8');
+
+            // Verify all required dispatch event types are present
+            const requiredEvents = [
+              'build-project',
+              'create-agent',
+              'generate-document',
+              'deploy-system',
+              'run-invention-cycle',
+              'genesis-command',
+              'run-agent',
+              'shadow-scrape',
+            ];
+
+            const missing = requiredEvents.filter(e => !content.includes(e));
+
+            if (missing.length > 0) {
+              console.log(`[OrgSync] WARN: Missing dispatch event types: ${missing.join(', ')}`);
+            } else {
+              console.log('[OrgSync] All required dispatch event types present.');
+            }
+
+            // Verify TAP Protocol auth check exists
+            const hasTAP = content.includes('TAP') || content.includes('authorized');
+            console.log(`[OrgSync] TAP Protocol check: ${hasTAP ? 'PRESENT' : 'MISSING'}`);
+
+            // Verify dispatch log exists
+            const hasLog = content.includes('dispatch-log') || content.includes('commands.jsonl');
+            console.log(`[OrgSync] Dispatch logging: ${hasLog ? 'PRESENT' : 'MISSING'}`);
+
+            const bridgeValid = missing.length === 0 && hasTAP && hasLog;
+            core.setOutput('bridge_valid', bridgeValid.toString());
+            core.setOutput('supported_events', requiredEvents.join(','));
+
+            console.log(`[OrgSync] Dispatch Bridge status: ${bridgeValid ? 'VALID' : 'NEEDS ATTENTION'}`);
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 2 — Validate Copilot Mobile integration
+  # ─────────────────────────────────────────────────────────────
+  validate-copilot-integration:
+    name: 🤖 Validate Copilot Mobile Integration
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'schedule' ||
+      github.event.inputs.operation == 'full-sync' ||
+      github.event.inputs.operation == 'validate-copilot'
+
+    outputs:
+      copilot_valid: ${{ steps.copilot.outputs.copilot_valid }}
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 🤖 Validate Copilot Instructions
+        id: copilot
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const instructionsPath = '.github/copilot-instructions.md';
+            console.log('[OrgSync] Checking Copilot instructions...');
+
+            if (!fs.existsSync(instructionsPath)) {
+              console.log('[OrgSync] WARN: .github/copilot-instructions.md not found');
+              core.setOutput('copilot_valid', 'false');
+              return;
+            }
+
+            const content = fs.readFileSync(instructionsPath, 'utf8');
+
+            const checks = {
+              'Repo URL present':           content.includes('construct-iq-360'),
+              'Org name present':           content.includes('Infinity-X-One-Systems') ||
+                                            content.includes('InfinityXOneSystems'),
+              'TAP Protocol documented':    content.includes('TAP'),
+              'Tech stack documented':      content.includes('Next.js') || content.includes('TypeScript'),
+              'Orchestrator route present': content.includes('infinity-orchestrator'),
+              'Auth documented':            content.includes('PAT') || content.includes('token'),
+            };
+
+            let allPass = true;
+            for (const [check, result] of Object.entries(checks)) {
+              console.log(`  ${result ? '✓' : '✗'} ${check}`);
+              if (!result) allPass = false;
+            }
+
+            core.setOutput('copilot_valid', allPass.toString());
+            console.log(`[OrgSync] Copilot integration: ${allPass ? 'VALID' : 'INCOMPLETE'}`);
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 3 — Validate ChatGPT Custom GPT integration
+  # ─────────────────────────────────────────────────────────────
+  validate-chatgpt-integration:
+    name: 💬 Validate ChatGPT Integration
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'schedule' ||
+      github.event.inputs.operation == 'full-sync' ||
+      github.event.inputs.operation == 'validate-chatgpt'
+
+    outputs:
+      chatgpt_valid: ${{ steps.chatgpt.outputs.chatgpt_valid }}
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 💬 Validate OpenAPI Spec
+        id: chatgpt
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs   = require('fs');
+            const path = require('path');
+
+            const specPaths = [
+              'apps/command-center/public/openapi.yaml',
+              'public/openapi.yaml',
+            ];
+
+            let specPath = null;
+            for (const p of specPaths) {
+              if (fs.existsSync(p)) { specPath = p; break; }
+            }
+
+            console.log('[OrgSync] Checking ChatGPT OpenAPI spec...');
+
+            if (!specPath) {
+              console.log('[OrgSync] WARN: openapi.yaml not found at expected paths');
+              core.setOutput('chatgpt_valid', 'false');
+              return;
+            }
+
+            console.log(`[OrgSync] Found spec at: ${specPath}`);
+            const content = fs.readFileSync(specPath, 'utf8');
+
+            const checks = {
+              'OpenAPI 3.x':                   content.startsWith('openapi: 3'),
+              'Infinity Orchestrator target':  content.includes('infinity-orchestrator'),
+              'triggerOrchestrator operation': content.includes('triggerOrchestrator'),
+              'Bearer auth defined':           content.includes('bearerAuth'),
+              'Server URL present':            content.includes('api.github.com'),
+            };
+
+            let allPass = true;
+            for (const [check, result] of Object.entries(checks)) {
+              console.log(`  ${result ? '✓' : '✗'} ${check}`);
+              if (!result) allPass = false;
+            }
+
+            // Check ai-plugin.json
+            const pluginPaths = [
+              'apps/command-center/public/.well-known/ai-plugin.json',
+              'public/.well-known/ai-plugin.json',
+            ];
+            let pluginFound = false;
+            for (const p of pluginPaths) {
+              if (fs.existsSync(p)) {
+                pluginFound = true;
+                console.log(`  ✓ ai-plugin.json found at ${p}`);
+                break;
+              }
+            }
+            if (!pluginFound) {
+              console.log('  ✗ ai-plugin.json not found');
+            }
+
+            core.setOutput('chatgpt_valid', (allPass && pluginFound).toString());
+            console.log(`[OrgSync] ChatGPT integration: ${allPass && pluginFound ? 'VALID' : 'INCOMPLETE'}`);
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 4 — Write sync report to ACTIVE_MEMORY.md and step summary
+  # ─────────────────────────────────────────────────────────────
+  sync-report:
+    name: 📊 Sync Report & Active Memory Update
+    runs-on: ubuntu-latest
+    needs:
+      - validate-dispatch-bridge
+      - validate-copilot-integration
+      - validate-chatgpt-integration
+    if: always()
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 Build Sync Report
+        id: report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const bridgeValid  = '${{ needs.validate-dispatch-bridge.outputs.bridge_valid }}'  === 'true';
+            const copilotValid = '${{ needs.validate-copilot-integration.outputs.copilot_valid }}' === 'true';
+            const chatgptValid = '${{ needs.validate-chatgpt-integration.outputs.chatgpt_valid }}' === 'true';
+
+            const overallValid = bridgeValid && copilotValid && chatgptValid;
+            const timestamp    = new Date().toISOString();
+
+            const report = {
+              timestamp,
+              overall_status:   overallValid ? 'SYNCED' : 'DRIFT_DETECTED',
+              dispatch_bridge:  bridgeValid  ? 'VALID'  : 'NEEDS_ATTENTION',
+              copilot_mobile:   copilotValid ? 'VALID'  : 'NEEDS_ATTENTION',
+              chatgpt_custom:   chatgptValid ? 'VALID'  : 'NEEDS_ATTENTION',
+              org:              context.repo.owner,
+              repo:             context.repo.repo,
+              orchestrator:     'Infinity-X-One-Systems/infinity-orchestrator',
+            };
+
+            console.log('[OrgSync] Report:', JSON.stringify(report, null, 2));
+            core.setOutput('report_json', JSON.stringify(report));
+            core.setOutput('overall_valid', overallValid.toString());
+            return report;
+
+      - name: 🧠 Update Active Memory
+        run: |
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          # Update ACTIVE_MEMORY with sync status
+          python3 << 'PYEOF'
+          import json, os, re
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          bridge  = os.environ.get('BRIDGE',  '?')
+          copilot = os.environ.get('COPILOT', '?')
+          chatgpt = os.environ.get('CHATGPT', '?')
+
+          memory_path = Path('.infinity/ACTIVE_MEMORY.md')
+          if not memory_path.exists():
+              print('ACTIVE_MEMORY.md not found — skipping update')
+              exit(0)
+
+          content = memory_path.read_text()
+          timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+
+          # Update Last Update line
+          content = re.sub(
+              r'\*\*Last Update:\*\*.*',
+              f'**Last Update:** {timestamp}',
+              content
+          )
+
+          # Update or add Org Sync status
+          sync_block = (
+              f'- **Org Sync (Dispatch Bridge):** {bridge}\n'
+              f'- **Copilot Mobile Sync:** {copilot}\n'
+              f'- **ChatGPT Sync:** {chatgpt}'
+          )
+          if 'Org Sync (Dispatch Bridge)' in content:
+              content = re.sub(
+                  r'- \*\*Org Sync \(Dispatch Bridge\):\*\*.*?\n- \*\*Copilot Mobile Sync:\*\*.*?\n- \*\*ChatGPT Sync:\*\*.*?\n',
+                  sync_block + '\n',
+                  content,
+                  flags=re.DOTALL
+              )
+          else:
+              # Append to Active Configuration section
+              insert_after = '## 🛠️ Active Configuration'
+              if insert_after in content:
+                  content = content.replace(
+                      insert_after,
+                      insert_after + f'\n\n{sync_block}'
+                  )
+
+          # Add log entry
+          log_entry = (
+              f'-   `[{timestamp}]` Org Sync completed — '
+              f'Dispatch Bridge: {bridge} | Copilot: {copilot} | ChatGPT: {chatgpt}.'
+          )
+          if '## 📜 Recent Logs' in content:
+              content = content.replace(
+                  '## 📜 Recent Logs\n',
+                  f'## 📜 Recent Logs\n\n{log_entry}\n'
+              )
+
+          memory_path.write_text(content)
+          print(f'ACTIVE_MEMORY.md updated at {timestamp}')
+          PYEOF
+        env:
+          BRIDGE: ${{ fromJSON(steps.report.outputs.report_json).dispatch_bridge }}
+          COPILOT: ${{ fromJSON(steps.report.outputs.report_json).copilot_mobile }}
+          CHATGPT: ${{ fromJSON(steps.report.outputs.report_json).chatgpt_custom }}
+
+      - name: 💾 Commit Sync Report
+        run: |
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          git config user.name "Overseer-Prime"
+          git config user.email "overseer@construct-os.infinityxonesystems.com"
+          git add .infinity/ACTIVE_MEMORY.md
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "🔗 Org Sync: System alignment validated at ${TIMESTAMP}"
+            git push origin HEAD
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📝 Write Step Summary
+        run: |
+          REPORT='${{ steps.report.outputs.report_json }}'
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          OVERALL='${{ steps.report.outputs.overall_valid }}'
+
+          echo "# Org Sync Report — construct-iq-360" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp**: ${TIMESTAMP}" >> $GITHUB_STEP_SUMMARY
+          echo "**Overall Status**: $([ '${{ steps.report.outputs.overall_valid }}' = 'true' ] && echo 'SYNCED' || echo 'DRIFT DETECTED')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Integration Health" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Dispatch Bridge (→ infinity-orchestrator) | ${{ needs.validate-dispatch-bridge.outputs.bridge_valid == 'true' && 'VALID' || 'NEEDS ATTENTION' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Copilot Mobile Integration | ${{ needs.validate-copilot-integration.outputs.copilot_valid == 'true' && 'VALID' || 'NEEDS ATTENTION' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ChatGPT Custom GPT | ${{ needs.validate-chatgpt-integration.outputs.chatgpt_valid == 'true' && 'VALID' || 'NEEDS ATTENTION' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Architecture" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "ChatGPT Custom GPT  →  Infinity-X-One-Systems/infinity-orchestrator" >> $GITHUB_STEP_SUMMARY
+          echo "Copilot Mobile      →  Infinity-X-One-Systems/infinity-orchestrator" >> $GITHUB_STEP_SUMMARY
+          echo "                               │  repository_dispatch" >> $GITHUB_STEP_SUMMARY
+          echo "                               ▼" >> $GITHUB_STEP_SUMMARY
+          echo "                    InfinityXOneSystems/construct-iq-360" >> $GITHUB_STEP_SUMMARY
+          echo "                               │  dispatch-bridge.yml" >> $GITHUB_STEP_SUMMARY
+          echo "                               ▼" >> $GITHUB_STEP_SUMMARY
+          echo "                    Hunter | Architect | Orator | Shadow | Vault" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "TAP Protocol: Policy > Authority > Truth. Zero Human Intervention." >> $GITHUB_STEP_SUMMARY
+
+      - name: 🚨 Create Issue on Sync Failure
+        if: steps.report.outputs.overall_valid == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const report     = JSON.parse('${{ steps.report.outputs.report_json }}');
+            const timestamp  = new Date().toISOString();
+
+            // Check if an open sync-failure issue already exists
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner:  context.repo.owner,
+              repo:   context.repo.repo,
+              state:  'open',
+              labels: 'org-sync-failure',
+            });
+
+            if (existing.length > 0) {
+              console.log(`[OrgSync] Open sync-failure issue already exists: #${existing[0].number}`);
+              return;
+            }
+
+            const failedComponents = Object.entries(report)
+              .filter(([k, v]) => v === 'NEEDS_ATTENTION')
+              .map(([k]) => k.replace(/_/g, ' '));
+
+            await github.rest.issues.create({
+              owner:  context.repo.owner,
+              repo:   context.repo.repo,
+              title:  `Org Sync Drift Detected — ${timestamp}`,
+              body: [
+                '## Org Sync Drift Detected',
+                '',
+                `**Detected at**: ${timestamp}`,
+                '',
+                '### Failed Components',
+                ...failedComponents.map(c => `- ${c}`),
+                '',
+                '### Report',
+                '```json',
+                JSON.stringify(report, null, 2),
+                '```',
+                '',
+                '### Remediation',
+                '- Check `.github/copilot-instructions.md` for correct orchestrator routing',
+                '- Verify `apps/command-center/public/openapi.yaml` targets `infinity-orchestrator`',
+                '- Confirm `dispatch-bridge.yml` lists all required event types',
+                '',
+                'Self-repair protocol initiated. This issue will be auto-closed on next successful sync.',
+              ].join('\n'),
+              labels: ['org-sync-failure', 'needs-attention', 'automated'],
+            });

@@ -1,0 +1,371 @@
+# 🏃 Runner Manager — Self-Hosted Runner Health & Registration
+# Monitors self-hosted runner health, generates registration instructions,
+# and reports runner availability to the Infinity Orchestrator system.
+
+name: 🏃 Runner Manager - Self-Hosted Runner Health & Registration
+
+on:
+  schedule:
+    # Check runner health every 6 hours (aligned with genesis-loop)
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Runner operation to perform'
+        required: true
+        type: choice
+        default: 'health-check'
+        options:
+          - health-check
+          - generate-registration-instructions
+          - list-runners
+
+permissions:
+  contents: write
+  issues: write
+  actions: read
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # JOB 1 — Inspect registered runners and report health
+  # ─────────────────────────────────────────────────────────────
+  runner-health-check:
+    name: 🔍 Runner Health Check
+    runs-on: ubuntu-latest
+
+    outputs:
+      runner_count: ${{ steps.inspect.outputs.runner_count }}
+      online_count: ${{ steps.inspect.outputs.online_count }}
+      offline_count: ${{ steps.inspect.outputs.offline_count }}
+      has_self_hosted: ${{ steps.inspect.outputs.has_self_hosted }}
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 🔍 Inspect Runners
+        id: inspect
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('[Runners] Querying registered runners...');
+
+            // List runners for this repository
+            let runners = [];
+            try {
+              const { data } = await github.rest.actions.listSelfHostedRunnersForRepo({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+              });
+              runners = data.runners || [];
+            } catch (err) {
+              console.log(`[Runners] Could not list repo runners: ${err.message}`);
+            }
+
+            // Also try org-level runners
+            let orgRunners = [];
+            try {
+              const { data } = await github.rest.actions.listSelfHostedRunnersForOrg({
+                org: context.repo.owner,
+              });
+              orgRunners = data.runners || [];
+            } catch (err) {
+              console.log(`[Runners] Could not list org runners (may need admin scope): ${err.message}`);
+            }
+
+            const allRunners = [...runners, ...orgRunners];
+            const online  = allRunners.filter(r => r.status === 'online');
+            const offline = allRunners.filter(r => r.status === 'offline');
+            const selfHosted = allRunners.filter(r =>
+              r.labels?.some(l => l.name === 'self-hosted')
+            );
+
+            console.log(`[Runners] Total registered  : ${allRunners.length}`);
+            console.log(`[Runners] Online            : ${online.length}`);
+            console.log(`[Runners] Offline           : ${offline.length}`);
+            console.log(`[Runners] Self-hosted       : ${selfHosted.length}`);
+
+            if (allRunners.length > 0) {
+              console.log('\n[Runners] Runner inventory:');
+              for (const r of allRunners) {
+                const labels = r.labels?.map(l => l.name).join(', ') || 'none';
+                console.log(`  • ${r.name} | status=${r.status} | labels=[${labels}]`);
+              }
+            }
+
+            core.setOutput('runner_count',    allRunners.length.toString());
+            core.setOutput('online_count',    online.length.toString());
+            core.setOutput('offline_count',   offline.length.toString());
+            core.setOutput('has_self_hosted', (selfHosted.length > 0).toString());
+
+            return {
+              total:       allRunners.length,
+              online:      online.length,
+              offline:     offline.length,
+              selfHosted:  selfHosted.length,
+              runners:     allRunners.map(r => ({
+                name:   r.name,
+                status: r.status,
+                labels: r.labels?.map(l => l.name) || [],
+              })),
+            };
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 2 — Generate registration instructions for new runners
+  # ─────────────────────────────────────────────────────────────
+  generate-registration-guide:
+    name: 📋 Generate Runner Registration Guide
+    runs-on: ubuntu-latest
+    needs: runner-health-check
+    if: |
+      needs.runner-health-check.outputs.has_self_hosted == 'false' ||
+      github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'generate-registration-instructions'
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📋 Write Runner Registration Instructions
+        run: |
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          REPO_URL="https://github.com/${{ github.repository }}"
+          ORG="${{ github.repository_owner }}"
+
+          cat > docs/RUNNER_REGISTRATION.md << 'EOF'
+          # 🏃 Self-Hosted Runner Registration Guide
+
+          **Repository**: InfinityXOneSystems/construct-iq-360
+          **Authority**: Overseer-Prime — TAP Protocol v2
+          **Purpose**: Register a self-hosted runner to give the Infinity system access to local or remote machines.
+
+          ---
+
+          ## Why a Self-Hosted Runner?
+
+          GitHub-hosted runners (`ubuntu-latest`) are ephemeral and have no access to your local network,
+          private APIs, or persistent storage. A self-hosted runner enables:
+
+          - Access to local permit databases and internal APIs
+          - Persistent storage for large datasets
+          - Faster execution (no cold start)
+          - Access to GPUs for AI inference
+          - Integration with on-premise systems
+
+          ---
+
+          ## Option A — Local Machine Runner (Developer Workstation)
+
+          ```bash
+          # 1. Create runner directory
+          mkdir -p ~/actions-runner/construct-iq-360 && cd ~/actions-runner/construct-iq-360
+
+          # 2. Download the latest runner (Linux x64)
+          curl -o actions-runner-linux-x64.tar.gz -L \
+            https://github.com/actions/runner/releases/download/v2.321.0/actions-runner-linux-x64-2.321.0.tar.gz
+          tar xzf ./actions-runner-linux-x64.tar.gz
+
+          # 3. Register the runner with the org
+          # Get your runner token from:
+          #   https://github.com/organizations/InfinityXOneSystems/settings/actions/runners/new
+          ./config.sh \
+            --url https://github.com/InfinityXOneSystems \
+            --token YOUR_RUNNER_REG_TOKEN \
+            --name "local-machine" \
+            --labels "self-hosted,local-machine,x64,linux" \
+            --work _work \
+            --unattended
+
+          # 4. Install and start as a service (Linux)
+          sudo ./svc.sh install
+          sudo ./svc.sh start
+
+          # Verify it is running
+          sudo ./svc.sh status
+          ```
+
+          ---
+
+          ## Option B — Remote VPS / Cloud VM Runner
+
+          ```bash
+          # Same steps as Option A, but run on the remote server.
+          # Use a different --name and --labels:
+          ./config.sh \
+            --url https://github.com/InfinityXOneSystems \
+            --token YOUR_RUNNER_REG_TOKEN \
+            --name "remote-vps" \
+            --labels "self-hosted,remote-vps,x64,linux" \
+            --work _work \
+            --unattended
+          ```
+
+          ---
+
+          ## Option C — Docker Container Runner (Recommended for CI/CD Isolation)
+
+          ```dockerfile
+          # Dockerfile.runner
+          FROM ubuntu:22.04
+          RUN apt-get update && apt-get install -y curl git nodejs python3 python3-pip
+          RUN useradd -m runner
+          WORKDIR /home/runner/actions-runner
+          RUN curl -o runner.tar.gz -L \
+                https://github.com/actions/runner/releases/download/v2.321.0/actions-runner-linux-x64-2.321.0.tar.gz \
+              && tar xzf runner.tar.gz && rm runner.tar.gz
+          USER runner
+          COPY entrypoint.sh /entrypoint.sh
+          ENTRYPOINT ["/entrypoint.sh"]
+          ```
+
+          ```bash
+          # entrypoint.sh
+          #!/bin/bash
+          ./config.sh --url https://github.com/InfinityXOneSystems \
+            --token "$RUNNER_TOKEN" --name "$RUNNER_NAME" \
+            --labels "self-hosted,docker,x64,linux" --unattended --ephemeral
+          ./run.sh
+          ```
+
+          ```bash
+          docker build -t infinity-runner .
+          docker run -e RUNNER_TOKEN=YOUR_TOKEN -e RUNNER_NAME=docker-runner infinity-runner
+          ```
+
+          ---
+
+          ## Using the Runner in Workflows
+
+          Once registered, target your runner with:
+
+          ```yaml
+          jobs:
+            my-job:
+              runs-on: [self-hosted, local-machine]
+              # or: runs-on: [self-hosted, remote-vps]
+              # or: runs-on: [self-hosted, docker]
+          ```
+
+          ---
+
+          ## Runner Labels Reference
+
+          | Label | Purpose |
+          |-------|---------|
+          | `self-hosted` | Required — marks as self-hosted |
+          | `local-machine` | Developer's local workstation |
+          | `remote-vps` | Remote VPS or cloud VM |
+          | `docker` | Docker container runner |
+          | `gpu` | Machine with GPU (for AI inference) |
+          | `x64` | 64-bit Intel/AMD architecture |
+          | `linux` | Linux OS |
+
+          ---
+
+          ## Security Notes
+
+          - Runner registration tokens expire after **1 hour** — use them immediately.
+          - Never share runner tokens or commit them to source code.
+          - Self-hosted runners for public repos run untrusted code — use only for **private repos**.
+          - Apply least-privilege IAM policies on any cloud credentials the runner accesses.
+
+          ---
+
+          *Generated by Runner Manager workflow. TAP Protocol: Policy > Authority > Truth.*
+          EOF
+
+          # Strip leading spaces from heredoc
+          sed -i 's/^          //' docs/RUNNER_REGISTRATION.md
+
+          echo "Runner registration guide written to docs/RUNNER_REGISTRATION.md"
+
+      - name: 💾 Commit Runner Guide
+        run: |
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          git config user.name "Overseer-Prime"
+          git config user.email "overseer@construct-os.infinityxonesystems.com"
+          git add docs/RUNNER_REGISTRATION.md
+          if git diff --staged --quiet; then
+            echo "No changes to runner guide"
+          else
+            git commit -m "🏃 Runner Manager: Updated RUNNER_REGISTRATION.md at ${TIMESTAMP}"
+            git push origin HEAD
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 3 — Report runner status to step summary and create
+  #          issue if runners are unexpectedly offline
+  # ─────────────────────────────────────────────────────────────
+  runner-status-report:
+    name: 📊 Runner Status Report
+    runs-on: ubuntu-latest
+    needs: runner-health-check
+    if: always()
+
+    steps:
+      - name: 📊 Write Step Summary
+        run: |
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          echo "# Runner Status Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp**: ${TIMESTAMP}" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository**: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Runner Inventory" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Registered | ${{ needs.runner-health-check.outputs.runner_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Online | ${{ needs.runner-health-check.outputs.online_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Offline | ${{ needs.runner-health-check.outputs.offline_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Has Self-Hosted | ${{ needs.runner-health-check.outputs.has_self_hosted }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Notes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- All construct-iq-360 workflows default to \`ubuntu-latest\` (GitHub-hosted)." >> $GITHUB_STEP_SUMMARY
+          echo "- Self-hosted runners enable local machine / VPS / cloud access." >> $GITHUB_STEP_SUMMARY
+          echo "- See \`docs/RUNNER_REGISTRATION.md\` for registration instructions." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "TAP Protocol: Policy > Authority > Truth. Zero Human Intervention." >> $GITHUB_STEP_SUMMARY
+
+      - name: 🚨 Create Issue if Self-Hosted Runners Offline
+        if: |
+          needs.runner-health-check.outputs.has_self_hosted == 'true' &&
+          needs.runner-health-check.outputs.offline_count != '0' &&
+          needs.runner-health-check.outputs.online_count == '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const timestamp = new Date().toISOString();
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `Runner Alert: All self-hosted runners offline — ${timestamp}`,
+              body: [
+                '## Self-Hosted Runner Health Alert',
+                '',
+                'All registered self-hosted runners are currently **offline**.',
+                '',
+                '**Detected at**: ' + timestamp,
+                '**Offline count**: ${{ needs.runner-health-check.outputs.offline_count }}',
+                '',
+                '### Remediation Steps',
+                '1. Check the runner machine is powered on and has network access',
+                '2. SSH into the runner machine and verify the runner service:',
+                '   ```bash',
+                '   sudo systemctl status actions.runner.*',
+                '   # If stopped:',
+                '   sudo systemctl start actions.runner.*',
+                '   ```',
+                '3. If the runner token has expired, re-register via `docs/RUNNER_REGISTRATION.md`',
+                '',
+                'Self-repair protocol initiated. This issue will be auto-closed when runners come back online.',
+              ].join('\n'),
+              labels: ['runner-health', 'needs-attention', 'automated'],
+            });

@@ -1,0 +1,11 @@
+name: Mesh Memory Sync
+on:
+  push:
+    branches: [main]
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Memory Hydrate
+        run: pwsh ./Run_Memory_Script.ps1

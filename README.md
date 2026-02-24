@@ -258,4 +258,8 @@ Built with:
 
 **"Autonomous by design. Sovereign by nature. Built for scale."**
 
-*Last updated: 2024-01-15 | Built by InfinityXOneSystems*
+*Last updated: 2024-01-15 | Built by InfinityXOneSystems*# Infinity Mesh Unified Repo
+
+## Links
+- [Infinity Core Memory — ACTIVE_MEMORY.md](https://github.com/Infinity-X-One-Systems/infinity-core-memory/blob/main/.infinity/ACTIVE_MEMORY.md)
+- [Construct IQ 360 — README.md](https://github.com/Construct-IQ-360/construct-iq-360/blob/main/README.md)
